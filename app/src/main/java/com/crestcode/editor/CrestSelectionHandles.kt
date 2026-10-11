@@ -85,17 +85,41 @@ fun CrestSelectionOverlay(
     val endHandleCenterX = endX + (handleSizePx / 2f)
     val endHandleCenterY = endY + lineHeightPx + (handleSizePx / 2f)
 
+    val currentSelectionState by rememberUpdatedState(state)
+    val currentOnSelectionChanged by rememberUpdatedState(onSelectionChanged)
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .zIndex(100f)
-            .pointerInput(state.lineCount, state.selection) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(pass = PointerEventPass.Initial)
                     val downPos = down.position
 
-                    val distStart = hypot(downPos.x - startHandleCenterX, downPos.y - startHandleCenterY)
-                    val distEnd = hypot(downPos.x - endHandleCenterX, downPos.y - endHandleCenterY)
+                    val curState = currentSelectionState
+                    val curAnchor = curState.selection.anchor
+                    val curHead = curState.selection.head
+                    val curSelStart = if (curAnchor.line < curHead.line || (curAnchor.line == curHead.line && curAnchor.character <= curHead.character)) curAnchor else curHead
+                    val curSelEnd = if (curAnchor.line < curHead.line || (curAnchor.line == curHead.line && curAnchor.character <= curHead.character)) curHead else curAnchor
+
+                    val curStartLineText = curState.lines.getOrNull(curSelStart.line) ?: ""
+                    val curStartChar = curSelStart.character.coerceIn(0, curStartLineText.length)
+                    val curStartX = fontWidthPx * curStartChar
+                    val curStartY = lineHeightPx * curSelStart.line
+
+                    val curEndLineText = curState.lines.getOrNull(curSelEnd.line) ?: ""
+                    val curEndChar = curSelEnd.character.coerceIn(0, curEndLineText.length)
+                    val curEndX = fontWidthPx * curEndChar
+                    val curEndY = lineHeightPx * curSelEnd.line
+
+                    val curStartHandleCenterX = curStartX - (handleSizePx / 2f)
+                    val curStartHandleCenterY = curStartY + lineHeightPx + (handleSizePx / 2f)
+                    val curEndHandleCenterX = curEndX + (handleSizePx / 2f)
+                    val curEndHandleCenterY = curEndY + lineHeightPx + (handleSizePx / 2f)
+
+                    val distStart = hypot(downPos.x - curStartHandleCenterX, downPos.y - curStartHandleCenterY)
+                    val distEnd = hypot(downPos.x - curEndHandleCenterX, downPos.y - curEndHandleCenterY)
 
                     val isDraggingStart = distStart <= hitRadiusPx
                     val isDraggingEnd = !isDraggingStart && (distEnd <= hitRadiusPx)
@@ -116,21 +140,22 @@ fun CrestSelectionOverlay(
                             currTouchX += dragAmount.x
                             currTouchY += dragAmount.y
 
-                            val targetLine = (currTouchY / lineHeightPx).toInt().coerceIn(0, (state.lineCount - 1).coerceAtLeast(0))
-                            val targetLineText = state.lines.getOrNull(targetLine) ?: ""
+                            val latestState = currentSelectionState
+                            val targetLine = (currTouchY / lineHeightPx).toInt().coerceIn(0, (latestState.lineCount - 1).coerceAtLeast(0))
+                            val targetLineText = latestState.lines.getOrNull(targetLine) ?: ""
                             val targetChar = if (fontWidthPx > 0) {
                                 (currTouchX / fontWidthPx).toInt().coerceIn(0, targetLineText.length)
                             } else 0
 
                             if (isDraggingStart) {
-                                if (targetLine < selEnd.line || (targetLine == selEnd.line && targetChar <= selEnd.character)) {
-                                    engine.setSelection(targetLine, targetChar, selEnd.line, selEnd.character)
-                                    onSelectionChanged()
+                                if (targetLine < curSelEnd.line || (targetLine == curSelEnd.line && targetChar <= curSelEnd.character)) {
+                                    engine.setSelection(targetLine, targetChar, curSelEnd.line, curSelEnd.character)
+                                    currentOnSelectionChanged()
                                 }
                             } else {
-                                if (targetLine > selStart.line || (targetLine == selStart.line && targetChar >= selStart.character)) {
-                                    engine.setSelection(selStart.line, selStart.character, targetLine, targetChar)
-                                    onSelectionChanged()
+                                if (targetLine > curSelStart.line || (targetLine == curSelStart.line && targetChar >= curSelStart.character)) {
+                                    engine.setSelection(curSelStart.line, curSelStart.character, targetLine, targetChar)
+                                    currentOnSelectionChanged()
                                 }
                             }
                         }
