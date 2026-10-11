@@ -351,41 +351,7 @@ fun CrestNativeEditor(
                             },
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        // 1. Text Selection Highlight Background
-                        if (isLineInSelection && selColStart < selColEnd) {
-                            val fontWidthPx = with(density) { 13.sp.toPx() * 0.6f }
-                            val startPx = try { textLayoutResult?.getCursorRect(selColStart)?.left ?: (selColStart * fontWidthPx) } catch (t: Throwable) { selColStart * fontWidthPx }
-                            val endPx = try { textLayoutResult?.getCursorRect(selColEnd)?.left ?: (selColEnd * fontWidthPx) } catch (t: Throwable) { selColEnd * fontWidthPx }
-                            val startDp = with(density) { startPx.toDp() }
-                            val widthDp = with(density) { (endPx - startPx).coerceAtLeast(6f).toDp() }
-
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = startDp)
-                                    .width(widthDp)
-                                    .height(20.dp)
-                                    .background(CrestAccentPrimary.copy(alpha = 0.35f))
-                            )
-                        }
-
-                        val annotatedText = buildAnnotatedString {
-                            if (spans.isEmpty()) {
-                                append(lineText)
-                            } else {
-                                for (span in spans) {
-                                    val start = span.colStart.coerceAtMost(lineText.length)
-                                    val end = span.colEnd.coerceAtMost(lineText.length)
-                                    if (start < end) {
-                                        val style = getStyleForToken(span.tokenType)
-                                        pushStyle(style)
-                                        append(lineText.substring(start, end))
-                                        pop()
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. Matching bracket highlights (hitbox box style)
+                        // 1. Matching bracket highlights (hitbox box style)
                         for (bChar in bracketsOnThisLine) {
                             val bracketOffsetPx = remember(textLayoutResult, bChar) {
                                 if (textLayoutResult != null && bChar < lineText.length) {
@@ -427,7 +393,7 @@ fun CrestNativeEditor(
                             onTextLayout = { textLayoutResult = it }
                         )
 
-                        // 3. Render cursor indicator precisely at cursor offset when no selection
+                        // 2. Render cursor indicator precisely at cursor offset when no selection
                         if (isCurrentLine && !isSelectionActive) {
                             Box(
                                 modifier = Modifier
@@ -440,144 +406,12 @@ fun CrestNativeEditor(
                     }
                 }
 
-                // 4. Floating Selection Handles Overlay Layer (renders on top of all lines)
-                if (isSelectionActive) {
-                    val fontWidthPx = with(density) { 13.sp.toPx() * 0.6f }
-                    val fontWidthDp = with(density) { fontWidthPx.toDp() }
-                    val lineHeightPx = with(density) { 20.dp.toPx() }
-
-                    // Start Handle (top-left sharp teardrop)
-                    val startLineText = state.lines.getOrNull(selStart.line) ?: ""
-                    val startChar = selStart.character.coerceIn(0, startLineText.length)
-                    val hStartDpX = fontWidthDp * startChar
-                    val hStartDpY = 20.dp * selStart.line
-
-                    // Vertical cursor line at selection start
-                    Box(
-                        modifier = Modifier
-                            .zIndex(99f)
-                            .offset(x = hStartDpX, y = hStartDpY)
-                            .width(2.dp)
-                            .height(20.dp)
-                            .background(Color.White)
-                    )
-                    // Touch hit-box for Start Handle
-                    Box(
-                        modifier = Modifier
-                            .zIndex(100f)
-                            .offset(x = (hStartDpX - 26.dp).coerceAtLeast(0.dp), y = hStartDpY + 18.dp)
-                            .size(40.dp)
-                            .pointerInput(state.lineCount, state.lines) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                                    down.consume()
-                                    var currTouchX = with(density) { (hStartDpX).toPx() }
-                                    var currTouchY = with(density) { (hStartDpY + 20.dp).toPx() }
-
-                                    while (true) {
-                                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                                        val change = event.changes.firstOrNull() ?: break
-                                        if (!change.pressed) break
-
-                                        val dragAmount = change.positionChange()
-                                        change.consume()
-
-                                        currTouchX += dragAmount.x
-                                        currTouchY += dragAmount.y
-
-                                        val targetLine = (currTouchY / lineHeightPx).toInt().coerceIn(0, (state.lineCount - 1).coerceAtLeast(0))
-                                        val targetLineText = state.lines.getOrNull(targetLine) ?: ""
-                                        val targetChar = if (fontWidthPx > 0) {
-                                            (currTouchX / fontWidthPx).toInt().coerceIn(0, targetLineText.length)
-                                        } else 0
-
-                                        if (targetLine != selStart.line || targetChar != selStart.character) {
-                                            if (targetLine < selEnd.line || (targetLine == selEnd.line && targetChar <= selEnd.character)) {
-                                                engine.setSelection(targetLine, targetChar, selEnd.line, selEnd.character)
-                                                renderState.value = engine.getRenderState()
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.TopEnd
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(
-                                    color = CrestAccentPrimary,
-                                    shape = RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp, bottomEnd = 22.dp, topEnd = 0.dp)
-                                )
-                        )
-                    }
-
-                    // End Handle (top-right sharp teardrop)
-                    val endLineText = state.lines.getOrNull(selEnd.line) ?: ""
-                    val endChar = selEnd.character.coerceIn(0, endLineText.length)
-                    val hEndDpX = fontWidthDp * endChar
-                    val hEndDpY = 20.dp * selEnd.line
-
-                    // Vertical cursor line at selection end
-                    Box(
-                        modifier = Modifier
-                            .zIndex(99f)
-                            .offset(x = hEndDpX, y = hEndDpY)
-                            .width(2.dp)
-                            .height(20.dp)
-                            .background(Color.White)
-                    )
-                    // Touch hit-box for End Handle
-                    Box(
-                        modifier = Modifier
-                            .zIndex(100f)
-                            .offset(x = hEndDpX, y = hEndDpY + 18.dp)
-                            .size(40.dp)
-                            .pointerInput(state.lineCount, state.lines) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                                    down.consume()
-                                    var currTouchX = with(density) { (hEndDpX).toPx() }
-                                    var currTouchY = with(density) { (hEndDpY + 20.dp).toPx() }
-
-                                    while (true) {
-                                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                                        val change = event.changes.firstOrNull() ?: break
-                                        if (!change.pressed) break
-
-                                        val dragAmount = change.positionChange()
-                                        change.consume()
-
-                                        currTouchX += dragAmount.x
-                                        currTouchY += dragAmount.y
-
-                                        val targetLine = (currTouchY / lineHeightPx).toInt().coerceIn(0, (state.lineCount - 1).coerceAtLeast(0))
-                                        val targetLineText = state.lines.getOrNull(targetLine) ?: ""
-                                        val targetChar = if (fontWidthPx > 0) {
-                                            (currTouchX / fontWidthPx).toInt().coerceIn(0, targetLineText.length)
-                                        } else 0
-
-                                        if (targetLine != selEnd.line || targetChar != selEnd.character) {
-                                            if (targetLine > selStart.line || (targetLine == selStart.line && targetChar >= selStart.character)) {
-                                                engine.setSelection(selStart.line, selStart.character, targetLine, targetChar)
-                                                renderState.value = engine.getRenderState()
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.TopStart
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(
-                                    color = CrestAccentPrimary,
-                                    shape = RoundedCornerShape(topStart = 0.dp, bottomStart = 22.dp, bottomEnd = 22.dp, topEnd = 22.dp)
-                                )
-                        )
-                    }
-                }
+                // 3. Single Full-Editor Overlay Canvas for Selection Highlights & Handles
+                CrestSelectionOverlay(
+                    engine = engine,
+                    state = state,
+                    onSelectionChanged = { renderState.value = engine.getRenderState() }
+                )
 
                 // Blank space below code lines - tapping sets cursor to last line end
                 Spacer(
@@ -597,68 +431,13 @@ fun CrestNativeEditor(
             }
         }
 
-        // Floating Context Menu Toolbar (Copy, Cut, Paste, Select All - Clean Text, No Emojis)
+        // 4. Floating Context Menu Toolbar (Copy, Cut, Paste, Select All)
         if (isSelectionActive) {
-            Surface(
-                modifier = Modifier
-                    .padding(top = 12.dp)
-                    .align(Alignment.TopCenter),
-                shape = RoundedCornerShape(24.dp),
-                color = CrestSurfaceHeader,
-                shadowElevation = 8.dp,
-                tonalElevation = 8.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, CrestAccentPrimary.copy(alpha = 0.5f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = {
-                            val selText = engine.getSelectedText()
-                            if (selText.isNotEmpty()) {
-                                clipboardManager?.setPrimaryClip(ClipData.newPlainText("CrestCode", selText))
-                            }
-                        }
-                    ) {
-                        Text("Copy", color = CrestTextActive, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    TextButton(
-                        onClick = {
-                            val selText = engine.getSelectedText()
-                            if (selText.isNotEmpty()) {
-                                clipboardManager?.setPrimaryClip(ClipData.newPlainText("CrestCode", selText))
-                                engine.deleteSelection()
-                                refreshState()
-                            }
-                        }
-                    ) {
-                        Text("Cut", color = CrestTextActive, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    TextButton(
-                        onClick = {
-                            val clip = clipboardManager?.primaryClip
-                            if (clip != null && clip.itemCount > 0) {
-                                val pasteText = clip.getItemAt(0).text?.toString() ?: ""
-                                if (pasteText.isNotEmpty()) {
-                                    engine.insertText(pasteText)
-                                    refreshState()
-                                }
-                            }
-                        }
-                    ) {
-                        Text("Paste", color = CrestTextActive, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    TextButton(
-                        onClick = {
-                            engine.selectAll()
-                            refreshState()
-                        }
-                    ) {
-                        Text("Select All", color = CrestAccentPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
+            CrestSelectionToolbar(
+                engine = engine,
+                onStateRefresh = { refreshState() },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 }
