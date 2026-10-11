@@ -42,7 +42,6 @@ import kotlin.math.hypot
 fun CrestSelectionOverlay(
     engine: NativeEditorEngine,
     state: RenderState,
-    onSelectionChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selAnchor = state.selection.anchor
@@ -86,7 +85,6 @@ fun CrestSelectionOverlay(
     val endHandleCenterY = endY + lineHeightPx + (handleSizePx / 2f)
 
     val currentSelectionState by rememberUpdatedState(state)
-    val currentOnSelectionChanged by rememberUpdatedState(onSelectionChanged)
 
     Canvas(
         modifier = modifier
@@ -150,12 +148,10 @@ fun CrestSelectionOverlay(
                             if (isDraggingStart) {
                                 if (targetLine < curSelEnd.line || (targetLine == curSelEnd.line && targetChar <= curSelEnd.character)) {
                                     engine.setSelection(targetLine, targetChar, curSelEnd.line, curSelEnd.character)
-                                    currentOnSelectionChanged()
                                 }
                             } else {
                                 if (targetLine > curSelStart.line || (targetLine == curSelStart.line && targetChar >= curSelStart.character)) {
                                     engine.setSelection(curSelStart.line, curSelStart.character, targetLine, targetChar)
-                                    currentOnSelectionChanged()
                                 }
                             }
                         }
@@ -180,7 +176,6 @@ fun CrestSelectionOverlay(
                                         (downPos.x / fontWidthPx).toInt().coerceIn(0, targetLineText.length)
                                     } else 0
                                     engine.setCursor(targetLine, targetChar)
-                                    currentOnSelectionChanged()
                                 }
                                 break
                             }

@@ -447,7 +447,6 @@ fun CrestNativeEditor(
                 CrestSelectionOverlay(
                     engine = engine,
                     state = state,
-                    onSelectionChanged = { renderState.value = engine.getRenderState() },
                     modifier = Modifier
                         .padding(vertical = 8.dp, horizontal = 12.dp)
                         .matchParentSize()
