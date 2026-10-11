@@ -159,6 +159,36 @@ fun CrestSelectionOverlay(
                                 }
                             }
                         }
+                    } else {
+                        var isDrag = false
+                        while (true) {
+                            val event = awaitPointerEvent(pass = PointerEventPass.Main)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.isConsumed) {
+                                break
+                            }
+                            if (!change.pressed) {
+                                if (!isDrag) {
+                                    change.consume()
+                                    val latestState = currentSelectionState
+                                    val rawLine = (downPos.y / lineHeightPx).toInt()
+                                    val targetLine = rawLine.coerceIn(0, (latestState.lineCount - 1).coerceAtLeast(0))
+                                    val targetLineText = latestState.lines.getOrNull(targetLine) ?: ""
+                                    val targetChar = if (rawLine >= latestState.lineCount) {
+                                        targetLineText.length
+                                    } else if (fontWidthPx > 0) {
+                                        (downPos.x / fontWidthPx).toInt().coerceIn(0, targetLineText.length)
+                                    } else 0
+                                    engine.setCursor(targetLine, targetChar)
+                                    currentOnSelectionChanged()
+                                }
+                                break
+                            }
+                            val dragDist = hypot(change.position.x - downPos.x, change.position.y - downPos.y)
+                            if (dragDist > viewConfiguration.touchSlop) {
+                                isDrag = true
+                            }
+                        }
                     }
                 }
             }
