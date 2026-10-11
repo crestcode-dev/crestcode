@@ -383,6 +383,21 @@ fun CrestNativeEditor(
                                         shape = RoundedCornerShape(3.dp)
                                     )
                             )
+                        val annotatedText = buildAnnotatedString {
+                            if (spans.isEmpty()) {
+                                append(lineText)
+                            } else {
+                                for (span in spans) {
+                                    val start = span.colStart.coerceAtMost(lineText.length)
+                                    val end = span.colEnd.coerceAtMost(lineText.length)
+                                    if (start < end) {
+                                        val style = getStyleForToken(span.tokenType)
+                                        pushStyle(style)
+                                        append(lineText.substring(start, end))
+                                        pop()
+                                    }
+                                }
+                            }
                         }
 
                         Text(

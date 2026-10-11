@@ -41,7 +41,7 @@ import kotlin.math.hypot
 @Composable
 fun CrestSelectionOverlay(
     engine: NativeEditorEngine,
-    state: EditorRenderState,
+    state: RenderState,
     onSelectionChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
