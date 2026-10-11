@@ -383,6 +383,8 @@ fun CrestNativeEditor(
                                         shape = RoundedCornerShape(3.dp)
                                     )
                             )
+                        }
+
                         val annotatedText = buildAnnotatedString {
                             if (spans.isEmpty()) {
                                 append(lineText)
@@ -448,11 +450,13 @@ fun CrestNativeEditor(
 
         // 4. Floating Context Menu Toolbar (Copy, Cut, Paste, Select All)
         if (isSelectionActive) {
-            CrestSelectionToolbar(
-                engine = engine,
-                onStateRefresh = { refreshState() },
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                CrestSelectionToolbar(
+                    engine = engine,
+                    onStateRefresh = { refreshState() },
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+            }
         }
     }
 }
