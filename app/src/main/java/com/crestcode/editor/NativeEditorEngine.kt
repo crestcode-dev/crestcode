@@ -2,6 +2,7 @@ package com.crestcode.editor
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.crestcode.trace.CrestTrace
 
 data class EditorPosition(val line: Int, val character: Int)
 data class EditorSelection(val anchor: EditorPosition, val head: EditorPosition)
@@ -367,7 +368,12 @@ class NativeEditorEngine : AutoCloseable {
     fun insertText(text: String): TextChangeEvent? {
         val resp: EditResponse
         if (isLibraryLoaded && nativePtr != 0L) {
-            val json = nativeInsertTextWithState(nativePtr, text)
+            val json = CrestTrace.traceOp("JNI:nativeInsertTextWithState") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeInsertTextWithState(nativePtr, text)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeInsertTextWithState", System.nanoTime() - t0)
+                res
+            }
             resp = parseEditResponse(json)
         } else {
             val startPos = fallbackCursor
@@ -414,7 +420,12 @@ class NativeEditorEngine : AutoCloseable {
     fun deleteBackspace(): TextChangeEvent? {
         val resp: EditResponse
         if (isLibraryLoaded && nativePtr != 0L) {
-            val json = nativeDeleteBackspaceWithState(nativePtr)
+            val json = CrestTrace.traceOp("JNI:nativeDeleteBackspaceWithState") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeDeleteBackspaceWithState(nativePtr)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeDeleteBackspaceWithState", System.nanoTime() - t0)
+                res
+            }
             resp = parseEditResponse(json)
         } else {
             if (fallbackLines.isEmpty()) {
@@ -479,7 +490,12 @@ class NativeEditorEngine : AutoCloseable {
         lastChangeEvent = null
         val state: EditorState?
         if (isLibraryLoaded && nativePtr != 0L) {
-            val json = nativeMoveCursorWithState(nativePtr, direction, select)
+            val json = CrestTrace.traceOp("JNI:nativeMoveCursorWithState") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeMoveCursorWithState(nativePtr, direction, select)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeMoveCursorWithState", System.nanoTime() - t0)
+                res
+            }
             state = parseEditorState(json)
         } else {
             val maxLine = (fallbackLines.size - 1).coerceAtLeast(0)
@@ -515,7 +531,12 @@ class NativeEditorEngine : AutoCloseable {
         lastChangeEvent = null
         val state: EditorState?
         if (isLibraryLoaded && nativePtr != 0L) {
-            val json = nativeSetSelectionWithState(nativePtr, anchorLine, anchorChar, headLine, headChar)
+            val json = CrestTrace.traceOp("JNI:nativeSetSelectionWithState") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeSetSelectionWithState(nativePtr, anchorLine, anchorChar, headLine, headChar)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeSetSelectionWithState", System.nanoTime() - t0)
+                res
+            }
             state = parseEditorState(json)
         } else {
             val validLine = headLine.coerceIn(0, (fallbackLines.size - 1).coerceAtLeast(0))
@@ -633,7 +654,12 @@ class NativeEditorEngine : AutoCloseable {
 
     fun getEditorState(): EditorState {
         if (isLibraryLoaded && nativePtr != 0L) {
-            val jsonStr = nativeGetEditorStateJson(nativePtr)
+            val jsonStr = CrestTrace.traceOp("JNI:nativeGetEditorStateJson") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeGetEditorStateJson(nativePtr)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeGetEditorStateJson", System.nanoTime() - t0)
+                res
+            }
             val parsed = parseEditorState(jsonStr)
             if (parsed != null) {
                 lastEditorState = parsed
@@ -755,7 +781,12 @@ class NativeEditorEngine : AutoCloseable {
     fun getHighlightSpans(startLine: Int, endLine: Int): Map<Int, List<TokenSpan>> {
         val result = mutableMapOf<Int, List<TokenSpan>>()
         if (isLibraryLoaded && nativePtr != 0L) {
-            val jsonStr = nativeGetHighlightSpansJson(nativePtr, startLine, endLine)
+            val jsonStr = CrestTrace.traceOp("JNI:nativeGetHighlightSpansJson") {
+                val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                val res = nativeGetHighlightSpansJson(nativePtr, startLine, endLine)
+                if (CrestTrace.isRecording) CrestTrace.recordJni("nativeGetHighlightSpansJson", System.nanoTime() - t0)
+                res
+            }
             if (jsonStr.isNotEmpty() && jsonStr != "null") {
                 try {
                     val arr = JSONArray(jsonStr)

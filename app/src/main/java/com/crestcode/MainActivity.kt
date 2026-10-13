@@ -21,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crestcode.core.settings.SettingsManager
 import com.crestcode.editor.CrestNativeEditor
 import com.crestcode.runtime.AlpineManager
+import com.crestcode.trace.CrestTrace
+import com.crestcode.trace.CrestTraceDialog
 import com.crestcode.ui.MainViewModel
 import com.crestcode.ui.TerminalScreen
 import com.crestcode.ui.components.*
@@ -52,6 +54,8 @@ class MainActivity : ComponentActivity() {
                 val activeTabId by viewModel.activeTabId.collectAsState()
                 val activeLanguage by viewModel.activeLanguage.collectAsState()
                 val showTerminal by viewModel.showTerminal.collectAsState()
+                val isTracing by CrestTrace.isRecordingFlow.collectAsState()
+                var traceReportToDisplay by remember { mutableStateOf<String?>(null) }
                 var keyboardToggleTrigger by remember { mutableStateOf(0) }
 
                 val showCreateDialog by viewModel.showCreateDialog.collectAsState()
@@ -132,6 +136,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                // Performance Diagnostics Report Dialog
+                traceReportToDisplay?.let { report ->
+                    CrestTraceDialog(
+                        reportText = report,
+                        onDismiss = { traceReportToDisplay = null }
+                    )
+                }
+
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     drawerContent = {
@@ -184,6 +196,16 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onRedoClick = {
                                         viewModel.engine.redo()
+                                    },
+                                    isTracing = isTracing,
+                                    onToggleTrace = {
+                                        if (isTracing) {
+                                            val report = CrestTrace.stopRecording()
+                                            traceReportToDisplay = report
+                                        } else {
+                                            CrestTrace.startRecording(this@MainActivity)
+                                            Toast.makeText(context, "CrestTrace recording started", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 )
                                 CrestTabBar(

@@ -14,3 +14,7 @@
 -keepclassmembers class * {
     @androidx.compose.runtime.Composable *;
 }
+
+# Keep CrestTrace models and diagnostics
+-keep class com.crestcode.trace.** { *; }
+

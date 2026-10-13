@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.crestcode.trace.CrestTrace
 import com.crestcode.ui.theme.*
 
 @Composable
@@ -48,6 +49,12 @@ fun CrestNativeEditor(
 ) {
     val editorState = remember { mutableStateOf(engine.getEditorState()) }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    SideEffect {
+        if (CrestTrace.isRecording) {
+            CrestTrace.recordRecomposition("CrestNativeEditor")
+        }
+    }
     val lazyListState = rememberLazyListState()
     val horizontalScroll = rememberScrollState()
     val density = LocalDensity.current
@@ -95,10 +102,14 @@ fun CrestNativeEditor(
         }
         engine.onContentModified = { resp ->
             if (resp.change != null) {
-                editorLines.value = lineTracker.applyChange(resp.change)
+                editorLines.value = CrestTrace.traceOp("EditorLineTracker.applyChange") {
+                    lineTracker.applyChange(resp.change)
+                }
             } else {
                 val full = engine.getRenderState()
-                editorLines.value = lineTracker.updateLines(full.lines)
+                editorLines.value = CrestTrace.traceOp("EditorLineTracker.updateLines") {
+                    lineTracker.updateLines(full.lines)
+                }
             }
             if (resp.state != null) {
                 editorState.value = resp.state
@@ -168,14 +179,36 @@ fun CrestNativeEditor(
 
     val isSelectionActive = (selStart.line != selEnd.line || selStart.character != selEnd.character)
 
+    // Track scroll events during active recording
+    LaunchedEffect(lazyListState) {
+        snapshotFlow {
+            Triple(
+                lazyListState.firstVisibleItemIndex,
+                lazyListState.layoutInfo.visibleItemsInfo.size,
+                lazyListState.firstVisibleItemScrollOffset
+            )
+        }.collect { (first, count, offset) ->
+            if (CrestTrace.isRecording) {
+                CrestTrace.recordScroll(first, count, offset)
+            }
+        }
+    }
+
     // Lazy on-demand syntax highlighting strictly for rendered lines
     fun getSpansForLine(lineIdx: Int, lineModel: EditorLine): List<TokenSpan> {
+        val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
         val cached = highlightCache[lineModel.id]
         if (cached != null && cached.first == lineModel.text.hashCode()) {
+            if (CrestTrace.isRecording) {
+                CrestTrace.recordHighlightLookup(hit = true, durationNanos = System.nanoTime() - t0)
+            }
             return cached.second
         }
         val spans = engine.getHighlightSpans(lineIdx, lineIdx)[lineIdx] ?: emptyList()
         highlightCache[lineModel.id] = Pair(lineModel.text.hashCode(), spans)
+        if (CrestTrace.isRecording) {
+            CrestTrace.recordHighlightLookup(hit = false, durationNanos = System.nanoTime() - t0)
+        }
         return spans
     }
 
@@ -449,6 +482,11 @@ private fun EditorLineRow(
     onLineClick: (Int, Int) -> Unit,
     onSelectWord: (Int, Int) -> Unit,
 ) {
+    SideEffect {
+        if (CrestTrace.isRecording) {
+            CrestTrace.recordRecomposition("EditorLineRow")
+        }
+    }
     val i = lineIdx + 1
 
     Row(
@@ -574,21 +612,28 @@ private fun EditorLineRow(
                     )
                 }
 
-                val annotatedText = buildAnnotatedString {
-                    if (spans.isEmpty()) {
-                        append(lineText)
-                    } else {
-                        for (span in spans) {
-                            val start = span.colStart.coerceAtMost(lineText.length)
-                            val end = span.colEnd.coerceAtMost(lineText.length)
-                            if (start < end) {
-                                val style = getStyleForToken(span.tokenType)
-                                pushStyle(style)
-                                append(lineText.substring(start, end))
-                                pop()
+                val annotatedText = remember(lineText, spans) {
+                    val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                    val res = buildAnnotatedString {
+                        if (spans.isEmpty()) {
+                            append(lineText)
+                        } else {
+                            for (span in spans) {
+                                val start = span.colStart.coerceAtMost(lineText.length)
+                                val end = span.colEnd.coerceAtMost(lineText.length)
+                                if (start < end) {
+                                    val style = getStyleForToken(span.tokenType)
+                                    pushStyle(style)
+                                    append(lineText.substring(start, end))
+                                    pop()
+                                }
                             }
                         }
                     }
+                    if (CrestTrace.isRecording) {
+                        CrestTrace.recordEditorOp("buildAnnotatedString", System.nanoTime() - t0)
+                    }
+                    res
                 }
 
                 Text(
@@ -596,7 +641,13 @@ private fun EditorLineRow(
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     color = CrestTextActive,
-                    onTextLayout = { textLayoutResult = it }
+                    onTextLayout = {
+                        val t0 = if (CrestTrace.isRecording) System.nanoTime() else 0L
+                        textLayoutResult = it
+                        if (CrestTrace.isRecording) {
+                            CrestTrace.recordTextLayout(System.nanoTime() - t0)
+                        }
+                    }
                 )
 
                 // 2. Render cursor indicator precisely at cursor offset when no selection
