@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,7 @@ pub struct TokenSpan {
     pub token_type: TokenType,
 }
 
+#[derive(Clone)]
 pub struct SyntaxHighlighter {
     keywords: Regex,
     types: Regex,
@@ -32,20 +34,54 @@ pub struct SyntaxHighlighter {
     operators: Regex,
 }
 
+lazy_static! {
+    static ref RUST_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("rust");
+    static ref KOTLIN_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("kotlin");
+    static ref PYTHON_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("python");
+    static ref JS_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("javascript");
+    static ref C_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("c");
+    static ref DEFAULT_HIGHLIGHTER: SyntaxHighlighter = SyntaxHighlighter::compile_for_language("default");
+}
+
 impl SyntaxHighlighter {
-    pub fn for_language(language_id: &str) -> Self {
+    pub fn for_language(language_id: &str) -> &'static Self {
+        match language_id {
+            "rust" => &RUST_HIGHLIGHTER,
+            "kotlin" => &KOTLIN_HIGHLIGHTER,
+            "python" => &PYTHON_HIGHLIGHTER,
+            "javascript" | "typescript" => &JS_HIGHLIGHTER,
+            "c" | "cpp" => &C_HIGHLIGHTER,
+            _ => &DEFAULT_HIGHLIGHTER,
+        }
+    }
+
+    fn compile_for_language(language_id: &str) -> Self {
         let kw_pattern = match language_id {
-            "rust" => r"\b(fn|let|mut|pub|use|mod|struct|enum|impl|trait|where|if|else|loop|while|for|in|return|match|as|move|async|await|dyn|static|const)\b",
-            "kotlin" => r"\b(fun|val|var|class|object|interface|package|import|if|else|when|for|while|return|by|is|in|sealed|data|abstract|open|override|private|protected|public|internal)\b",
-            "python" => r"\b(def|class|import|from|as|if|elif|else|while|for|in|return|yield|try|except|finally|raise|with|lambda|global|nonlocal|pass|break|continue|async|await)\b",
-            "javascript" | "typescript" => r"\b(function|const|let|var|class|interface|type|import|export|from|if|else|for|while|return|async|await|try|catch|new|this|extends|super)\b",
-            "c" | "cpp" => r"\b(int|char|float|double|void|long|short|unsigned|struct|class|union|enum|if|else|for|while|do|return|switch|case|break|continue|new|delete|namespace|using|public|private)\b",
+            "rust" => {
+                r"\b(fn|let|mut|pub|use|mod|struct|enum|impl|trait|where|if|else|loop|while|for|in|return|match|as|move|async|await|dyn|static|const)\b"
+            }
+            "kotlin" => {
+                r"\b(fun|val|var|class|object|interface|package|import|if|else|when|for|while|return|by|is|in|sealed|data|abstract|open|override|private|protected|public|internal)\b"
+            }
+            "python" => {
+                r"\b(def|class|import|from|as|if|elif|else|while|for|in|return|yield|try|except|finally|raise|with|lambda|global|nonlocal|pass|break|continue|async|await)\b"
+            }
+            "javascript" | "typescript" => {
+                r"\b(function|const|let|var|class|interface|type|import|export|from|if|else|for|while|return|async|await|try|catch|new|this|extends|super)\b"
+            }
+            "c" | "cpp" => {
+                r"\b(int|char|float|double|void|long|short|unsigned|struct|class|union|enum|if|else|for|while|do|return|switch|case|break|continue|new|delete|namespace|using|public|private)\b"
+            }
             _ => r"\b(if|else|for|while|return|function|class|val|var|let|const|import)\b",
         };
 
         let type_pattern = match language_id {
-            "rust" => r"\b(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize|f32|f64|bool|char|String|str|Option|Result|Vec|Self|self)\b",
-            "kotlin" => r"\b(Int|Long|Float|Double|Boolean|Char|String|List|Map|Set|Any|Unit|Nothing)\b",
+            "rust" => {
+                r"\b(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize|f32|f64|bool|char|String|str|Option|Result|Vec|Self|self)\b"
+            }
+            "kotlin" => {
+                r"\b(Int|Long|Float|Double|Boolean|Char|String|List|Map|Set|Any|Unit|Nothing)\b"
+            }
             _ => r"\b[A-Z][a-zA-Z0-9_]*\b",
         };
 
@@ -68,14 +104,15 @@ impl SyntaxHighlighter {
 
         // Default all to Default
         let mut types = vec![TokenType::Default; len];
+        let is_ascii = line.is_ascii();
 
         // Apply regex matching in priority order
-        Self::apply_matches(line, &self.keywords, TokenType::Keyword, &mut types);
-        Self::apply_matches(line, &self.types, TokenType::Type, &mut types);
-        Self::apply_matches(line, &self.numbers, TokenType::Number, &mut types);
-        Self::apply_matches(line, &self.operators, TokenType::Operator, &mut types);
-        Self::apply_matches(line, &self.strings, TokenType::String, &mut types);
-        Self::apply_matches(line, &self.comments, TokenType::Comment, &mut types);
+        Self::apply_matches(line, is_ascii, &self.keywords, TokenType::Keyword, &mut types);
+        Self::apply_matches(line, is_ascii, &self.types, TokenType::Type, &mut types);
+        Self::apply_matches(line, is_ascii, &self.numbers, TokenType::Number, &mut types);
+        Self::apply_matches(line, is_ascii, &self.operators, TokenType::Operator, &mut types);
+        Self::apply_matches(line, is_ascii, &self.strings, TokenType::String, &mut types);
+        Self::apply_matches(line, is_ascii, &self.comments, TokenType::Comment, &mut types);
 
         // Group contiguous ranges into TokenSpans
         let mut i = 0;
@@ -95,10 +132,21 @@ impl SyntaxHighlighter {
         spans
     }
 
-    fn apply_matches(line: &str, regex: &Regex, token_type: TokenType, types: &mut [TokenType]) {
+    fn apply_matches(
+        line: &str,
+        is_ascii: bool,
+        regex: &Regex,
+        token_type: TokenType,
+        types: &mut [TokenType],
+    ) {
         for m in regex.find_iter(line) {
-            let start_char = line[..m.start()].chars().count();
-            let end_char = start_char + m.as_str().chars().count();
+            let (start_char, end_char) = if is_ascii {
+                (m.start(), m.end())
+            } else {
+                let start = line[..m.start()].chars().count();
+                let end = start + m.as_str().chars().count();
+                (start, end)
+            };
             for idx in start_char..end_char {
                 if idx < types.len() {
                     types[idx] = token_type;

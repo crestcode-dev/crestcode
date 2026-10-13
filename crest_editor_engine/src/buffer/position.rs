@@ -15,7 +15,10 @@ impl Position {
     }
 
     pub fn zero() -> Self {
-        Self { line: 0, character: 0 }
+        Self {
+            line: 0,
+            character: 0,
+        }
     }
 }
 
@@ -96,7 +99,5 @@ pub fn char_col_to_byte_col(line: &str, char_col: usize) -> usize {
 /// Convert byte offset in line to character index (0-indexed char count).
 pub fn byte_col_to_char_col(line: &str, byte_col: usize) -> usize {
     let target = byte_col.min(line.len());
-    line.char_indices()
-        .take_while(|(b, _)| *b < target)
-        .count()
+    line.char_indices().take_while(|(b, _)| *b < target).count()
 }

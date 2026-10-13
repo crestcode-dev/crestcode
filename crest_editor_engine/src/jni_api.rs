@@ -73,7 +73,9 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeInsert
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteBackspace<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteBackspace<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -127,7 +129,9 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeSelect
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetSelectedText<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetSelectedText<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -138,7 +142,9 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetSel
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteSelection<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteSelection<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -166,7 +172,11 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeUndo(
     ptr: jlong,
 ) -> jboolean {
     let engine = get_engine(ptr);
-    if engine.undo() { JNI_TRUE } else { 0 }
+    if engine.undo() {
+        JNI_TRUE
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -176,11 +186,17 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeRedo(
     ptr: jlong,
 ) -> jboolean {
     let engine = get_engine(ptr);
-    if engine.redo() { JNI_TRUE } else { 0 }
+    if engine.redo() {
+        JNI_TRUE
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetRenderStateJson<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetRenderStateJson<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -192,7 +208,165 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetRen
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetHighlightSpansJson<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetEditorStateJson<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let state = engine.get_editor_state();
+    let json_str = serde_json::to_string(&state).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeInsertTextWithState<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+    text: JString<'local>,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let t: String = env.get_string(&text).unwrap().into();
+    let resp = engine.insert_text_with_state(&t);
+    let json_str = serde_json::to_string(&resp).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteBackspaceWithState<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let resp = engine.delete_backspace_with_state();
+    let json_str = serde_json::to_string(&resp).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeDeleteSelectionWithState<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let resp = engine.delete_selection_with_state();
+    let json_str = serde_json::to_string(&resp).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeMoveCursorWithState<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+    direction: JString<'local>,
+    select: jboolean,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let dir: String = env.get_string(&direction).unwrap().into();
+    let state = engine.move_cursor_with_state(&dir, select == JNI_TRUE);
+    let json_str = serde_json::to_string(&state).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeSetSelectionWithState<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+    anchor_line: jint,
+    anchor_char: jint,
+    head_line: jint,
+    head_char: jint,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let state = engine.set_selection_with_state(
+        Position::new(anchor_line as usize, anchor_char as usize),
+        Position::new(head_line as usize, head_char as usize),
+    );
+    let json_str = serde_json::to_string(&state).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeUndoWithState<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let (success, state) = engine.undo_with_state();
+    let resp = serde_json::json!({
+        "success": success,
+        "state": state
+    });
+    env.new_string(resp.to_string()).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeRedoWithState<
+    'local,
+>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let (success, state) = engine.redo_with_state();
+    let resp = serde_json::json!({
+        "success": success,
+        "state": state
+    });
+    env.new_string(resp.to_string()).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetLine<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+    line: jint,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let line_str = engine.get_line(line as usize).unwrap_or_default();
+    env.new_string(line_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetLinesJson<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ptr: jlong,
+    start_line: jint,
+    end_line: jint,
+) -> JString<'local> {
+    let engine = get_engine(ptr);
+    let lines = engine.get_lines(start_line as usize, end_line as usize);
+    let json_str = serde_json::to_string(&lines).unwrap_or_default();
+    env.new_string(json_str).unwrap()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetHighlightSpansJson<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -220,7 +394,9 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeGetCon
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeLspCompletionJson<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeLspCompletionJson<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,
@@ -244,7 +420,9 @@ pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeLspHov
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeLspGotoDefinitionJson<'local>(
+pub extern "system" fn Java_com_crestcode_editor_NativeEditorEngine_nativeLspGotoDefinitionJson<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     ptr: jlong,

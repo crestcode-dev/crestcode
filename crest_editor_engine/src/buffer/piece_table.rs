@@ -42,7 +42,10 @@ impl TextBuffer {
     }
 
     pub fn line_length_chars(&self, line_idx: usize) -> usize {
-        self.lines.get(line_idx).map(|s| s.chars().count()).unwrap_or(0)
+        self.lines
+            .get(line_idx)
+            .map(|s| s.chars().count())
+            .unwrap_or(0)
     }
 
     pub fn line_length_utf16(&self, line_idx: usize) -> usize {
@@ -99,7 +102,8 @@ impl TextBuffer {
             self.lines[clamped.line] = first_line;
 
             for i in 1..new_lines.len() - 1 {
-                self.lines.insert(clamped.line + i, new_lines[i].to_string());
+                self.lines
+                    .insert(clamped.line + i, new_lines[i].to_string());
             }
 
             let last_idx = new_lines.len() - 1;
@@ -118,7 +122,11 @@ impl TextBuffer {
     /// Delete text between start position and end position.
     /// Returns deleted text string.
     pub fn delete_range(&mut self, start: Position, end: Position) -> String {
-        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
         let start = self.clamp_position(start);
         let end = self.clamp_position(end);
 
@@ -172,7 +180,11 @@ impl TextBuffer {
 
     /// Extract text within range (start, end).
     pub fn get_text_range(&self, start: Position, end: Position) -> String {
-        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
         let start = self.clamp_position(start);
         let end = self.clamp_position(end);
 
@@ -229,7 +241,11 @@ impl TextBuffer {
             let mut depth = 0;
             for l in target_pos.line..self.lines.len() {
                 let l_str = self.get_line(l)?;
-                let start_c = if l == target_pos.line { target_pos.character } else { 0 };
+                let start_c = if l == target_pos.line {
+                    target_pos.character
+                } else {
+                    0
+                };
                 for (c_idx, ch) in l_str.chars().enumerate().skip(start_c) {
                     if ch == target_char {
                         depth += 1;
@@ -246,7 +262,11 @@ impl TextBuffer {
             for l in (0..=target_pos.line).rev() {
                 let l_str = self.get_line(l)?;
                 let c_vec: Vec<char> = l_str.chars().collect();
-                let start_c = if l == target_pos.line { target_pos.character } else { c_vec.len().saturating_sub(1) };
+                let start_c = if l == target_pos.line {
+                    target_pos.character
+                } else {
+                    c_vec.len().saturating_sub(1)
+                };
                 for c_idx in (0..=start_c.min(c_vec.len().saturating_sub(1))).rev() {
                     let ch = c_vec[c_idx];
                     if ch == target_char {

@@ -1,0 +1,17 @@
+[package]
+name = "util"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Minimal util stub for rope/sum_tree crates"
+
+[lib]
+path = "src/util.rs"
+
+[features]
+default = []
+test-support = ["rand"]
+
+[dependencies]
+rand = { version = "0.8", optional = true }

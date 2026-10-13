@@ -69,14 +69,19 @@ impl LspClient {
                             if let Some(err) = value.get("error") {
                                 let _ = tx.send(Err(err.to_string()));
                             } else {
-                                let result = value.get("result").cloned().unwrap_or(serde_json::Value::Null);
+                                let result = value
+                                    .get("result")
+                                    .cloned()
+                                    .unwrap_or(serde_json::Value::Null);
                                 let _ = tx.send(Ok(result));
                             }
                         }
                     } else if let Some(method) = value.get("method").and_then(|m| m.as_str()) {
                         if method == "textDocument/publishDiagnostics" {
                             if let Some(params_val) = value.get("params") {
-                                if let Ok(params) = serde_json::from_value::<PublishDiagnosticsParams>(params_val.clone()) {
+                                if let Ok(params) = serde_json::from_value::<PublishDiagnosticsParams>(
+                                    params_val.clone(),
+                                ) {
                                     let cb_opt = diagnostics_callback_clone.lock().unwrap();
                                     if let Some(cb) = cb_opt.as_ref() {
                                         cb(params);
@@ -116,7 +121,11 @@ impl LspClient {
         self.writer_tx.send(payload).map_err(|e| e.to_string())
     }
 
-    pub fn send_request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub fn send_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let id = self.next_request_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = unbounded();
         {
@@ -157,7 +166,13 @@ impl LspClient {
         Ok(res)
     }
 
-    pub fn did_open(&self, uri: &str, language_id: &str, version: i64, text: &str) -> Result<(), String> {
+    pub fn did_open(
+        &self,
+        uri: &str,
+        language_id: &str,
+        version: i64,
+        text: &str,
+    ) -> Result<(), String> {
         self.send_notification(
             "textDocument/didOpen",
             json!({
@@ -193,7 +208,12 @@ impl LspClient {
         )
     }
 
-    pub fn completion(&self, uri: &str, line: u32, character: u32) -> Result<Vec<LspCompletionItem>, String> {
+    pub fn completion(
+        &self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspCompletionItem>, String> {
         let params = json!({
             "textDocument": { "uri": uri },
             "position": { "line": line, "character": character }
@@ -223,7 +243,12 @@ impl LspClient {
         }
     }
 
-    pub fn goto_definition(&self, uri: &str, line: u32, character: u32) -> Result<Vec<LspLocation>, String> {
+    pub fn goto_definition(
+        &self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspLocation>, String> {
         let params = json!({
             "textDocument": { "uri": uri },
             "position": { "line": line, "character": character }

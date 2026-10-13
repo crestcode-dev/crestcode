@@ -7,37 +7,32 @@ import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,9 +46,9 @@ fun CrestNativeEditor(
     keyboardToggleTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val renderState = remember { mutableStateOf(engine.getRenderState()) }
+    val editorState = remember { mutableStateOf(engine.getEditorState()) }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val verticalScroll = rememberScrollState()
+    val lazyListState = rememberLazyListState()
     val horizontalScroll = rememberScrollState()
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -63,9 +58,13 @@ fun CrestNativeEditor(
         context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     }
 
-    fun refreshState() {
-        renderState.value = engine.getRenderState()
-        onContentChanged()
+    val lineTracker = remember(activeTabId) { EditorLineTracker() }
+    val editorLines = remember(activeTabId) {
+        val initialLines = engine.getRenderState().lines
+        mutableStateOf(lineTracker.setLines(initialLines))
+    }
+    val highlightCache = remember(activeTabId) {
+        mutableMapOf<Long, Pair<Int, List<TokenSpan>>>()
     }
 
     fun requestInputFocus() {
@@ -78,11 +77,40 @@ fun CrestNativeEditor(
         }
     }
 
+    // Refresh state when explicitly requested (e.g. undo/redo or full sync)
+    fun refreshState() {
+        val es = engine.getEditorState()
+        val full = engine.getRenderState()
+        editorLines.value = lineTracker.updateLines(full.lines)
+        editorState.value = es
+        if (es.isModified) {
+            onContentChanged()
+        }
+    }
+
+    // Connect engine callbacks for zero-copy incremental updates
     DisposableEffect(engine) {
+        engine.onCursorMoved = { newState ->
+            editorState.value = newState
+        }
+        engine.onContentModified = { resp ->
+            if (resp.change != null) {
+                editorLines.value = lineTracker.applyChange(resp.change)
+            } else {
+                val full = engine.getRenderState()
+                editorLines.value = lineTracker.updateLines(full.lines)
+            }
+            if (resp.state != null) {
+                editorState.value = resp.state
+            }
+            onContentChanged()
+        }
         engine.onStateChanged = {
-            renderState.value = engine.getRenderState()
+            editorState.value = engine.getEditorState()
         }
         onDispose {
+            engine.onCursorMoved = null
+            engine.onContentModified = null
             engine.onStateChanged = null
         }
     }
@@ -95,13 +123,32 @@ fun CrestNativeEditor(
 
     // Automatically update render state when active tab changes
     LaunchedEffect(activeTabId) {
-        renderState.value = engine.getRenderState()
+        lineTracker.reset()
+        highlightCache.clear()
+        val es = engine.getEditorState()
+        val full = engine.getRenderState()
+        editorLines.value = lineTracker.setLines(full.lines)
+        editorState.value = es
         requestInputFocus()
+        val cur = es.cursor.line.coerceIn(0, (es.lineCount - 1).coerceAtLeast(0))
+        lazyListState.scrollToItem(cur)
     }
 
-    val state = renderState.value
-    val highlightSpans = remember(state.lines, state.lineCount) {
-        engine.getHighlightSpans(0, state.lineCount)
+    val state = editorState.value
+    val lines = editorLines.value
+
+    // Synchronize scroll position with active cursor line when cursor leaves viewport
+    LaunchedEffect(state.cursor.line) {
+        val layoutInfo = lazyListState.layoutInfo
+        val visibleItems = layoutInfo.visibleItemsInfo
+        if (visibleItems.isNotEmpty()) {
+            val first = visibleItems.first().index
+            val last = visibleItems.last().index
+            val cur = state.cursor.line
+            if (cur < first || cur > last) {
+                lazyListState.scrollToItem(cur.coerceIn(0, (lines.size - 1).coerceAtLeast(0)))
+            }
+        }
     }
 
     val selAnchor = state.selection.anchor
@@ -120,6 +167,17 @@ fun CrestNativeEditor(
     }
 
     val isSelectionActive = (selStart.line != selEnd.line || selStart.character != selEnd.character)
+
+    // Lazy on-demand syntax highlighting strictly for rendered lines
+    fun getSpansForLine(lineIdx: Int, lineModel: EditorLine): List<TokenSpan> {
+        val cached = highlightCache[lineModel.id]
+        if (cached != null && cached.first == lineModel.text.hashCode()) {
+            return cached.second
+        }
+        val spans = engine.getHighlightSpans(lineIdx, lineIdx)[lineIdx] ?: emptyList()
+        highlightCache[lineModel.id] = Pair(lineModel.text.hashCode(), spans)
+        return spans
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -148,7 +206,6 @@ fun CrestNativeEditor(
                                     val pasteText = clip.getItemAt(0).text?.toString() ?: ""
                                     if (pasteText.isNotEmpty()) {
                                         engine.insertText(pasteText)
-                                        refreshState()
                                     }
                                 }
                                 true
@@ -158,13 +215,23 @@ fun CrestNativeEditor(
                                 if (selText.isNotEmpty()) {
                                     clipboardManager?.setPrimaryClip(ClipData.newPlainText("CrestCode", selText))
                                     engine.deleteSelection()
-                                    refreshState()
                                 }
                                 true
                             }
                             Key.A -> {
                                 engine.selectAll()
-                                refreshState()
+                                true
+                            }
+                            Key.Z -> {
+                                if (keyEvent.isShiftPressed) {
+                                    engine.redo()
+                                } else {
+                                    engine.undo()
+                                }
+                                true
+                            }
+                            Key.Y -> {
+                                engine.redo()
                                 true
                             }
                             else -> false
@@ -172,33 +239,23 @@ fun CrestNativeEditor(
                     } else {
                         when (keyEvent.key) {
                             Key.DirectionLeft -> {
-                                engine.moveCursor("left")
-                                refreshState()
+                                engine.moveCursor("left", keyEvent.isShiftPressed)
                                 true
                             }
                             Key.DirectionRight -> {
-                                engine.moveCursor("right")
-                                refreshState()
+                                engine.moveCursor("right", keyEvent.isShiftPressed)
                                 true
                             }
                             Key.DirectionUp -> {
-                                engine.moveCursor("up")
-                                refreshState()
+                                engine.moveCursor("up", keyEvent.isShiftPressed)
                                 true
                             }
                             Key.DirectionDown -> {
-                                engine.moveCursor("down")
-                                refreshState()
-                                true
-                            }
-                            Key.Enter -> {
-                                engine.insertText("\n")
-                                refreshState()
+                                engine.moveCursor("down", keyEvent.isShiftPressed)
                                 true
                             }
                             Key.Tab -> {
                                 engine.insertText("    ")
-                                refreshState()
                                 true
                             }
                             else -> false
@@ -213,7 +270,7 @@ fun CrestNativeEditor(
         // Custom Android InputView hosting raw Zed-style InputConnection
         AndroidView(
             factory = { ctx ->
-                CrestInputView(ctx, engine, onContentChanged = { refreshState() }).also { view ->
+                CrestInputView(ctx, engine, onContentChanged = { /* Engine callbacks handle updates */ }).also { view ->
                     inputViewInstance = view
                     view.requestFocus()
                     val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -226,235 +283,134 @@ fun CrestNativeEditor(
             modifier = Modifier.size(1.dp)
         )
 
-        Row(
+        val lineCountDigits = lines.size.coerceAtLeast(state.lineCount).toString().length.coerceAtLeast(2)
+        val charWidthDp = with(density) { (13.sp.toPx() * 0.6f).toDp() }
+        val fontWidthPx = with(density) { 13.sp.toPx() * 0.6f }
+        val lineNumberWidth = (lineCountDigits * charWidthDp.value).dp + 24.dp
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(verticalScroll)
+                .clipToBounds()
         ) {
-            // Line Numbers Column (clean transparent background, no box highlight)
-            Column(
-                modifier = Modifier
-                    .background(Color.Transparent)
-                    .padding(vertical = 8.dp, horizontal = 12.dp)
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                for (i in 1..state.lineCount.coerceAtLeast(1)) {
-                    val lineIdx = i - 1
-                    Text(
-                        text = "$i",
-                        color = if (lineIdx == state.cursor.line) CrestAccentPrimary else CrestTextSecondary.copy(alpha = 0.5f),
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .height(20.dp)
-                            .pointerInput(lineIdx) {
-                                detectTapGestures {
-                                    val targetLineText = state.lines.getOrNull(lineIdx) ?: ""
-                                    val targetChar = state.cursor.character.coerceIn(0, targetLineText.length)
-                                    engine.setCursor(lineIdx, targetChar)
-                                    refreshState()
-                                    requestInputFocus()
-                                }
-                            }
-                    )
-                }
-            }
+                items(
+                    count = lines.size.coerceAtLeast(1),
+                    key = { idx -> lines.getOrNull(idx)?.id ?: idx.toLong() }
+                ) { lineIdx ->
+                    val lineModel = lines.getOrNull(lineIdx)
+                    val lineText = lineModel?.text ?: ""
+                    val spans = if (lineModel != null) getSpansForLine(lineIdx, lineModel) else emptyList()
+                    val isCurrentLine = (lineIdx == state.cursor.line)
+                    val cursorCol = if (isCurrentLine) state.cursor.character.coerceIn(0, lineText.length) else 0
 
-            // Code Text Content Area (full line width hitbox support)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(horizontalScroll)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(vertical = 8.dp, horizontal = 12.dp)
-                        .widthIn(min = minEditorWidth)
-                ) {
-                    for (lineIdx in 0 until state.lineCount.coerceAtLeast(1)) {
-                        val lineText = state.lines.getOrNull(lineIdx) ?: ""
-                        val spans = highlightSpans[lineIdx] ?: emptyList()
-                        val isCurrentLine = (lineIdx == state.cursor.line)
-
-                        var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-                        val cursorCol = if (isCurrentLine) state.cursor.character.coerceIn(0, lineText.length) else 0
-
-                        val cursorOffsetPx = remember(textLayoutResult, cursorCol, isCurrentLine) {
-                            if (isCurrentLine && textLayoutResult != null) {
-                                try {
-                                    textLayoutResult?.getCursorRect(cursorCol)?.left ?: 0f
-                                } catch (t: Throwable) {
-                                    0f
-                                }
-                            } else 0f
+                    val openPos = state.matchingBrackets?.first
+                    val closePos = state.matchingBrackets?.second
+                    val bracketsOnThisLine = remember(openPos, closePos, lineIdx, lineText) {
+                        val list = mutableListOf<Int>()
+                        if (openPos != null && openPos.line == lineIdx && openPos.character < lineText.length) {
+                            list.add(openPos.character)
                         }
-                        val cursorOffsetDp = with(density) { cursorOffsetPx.toDp() }
-
-                        // Bracket pair positions on this line
-                        val bracketsOnThisLine = remember(state.matchingBrackets, lineIdx, lineText) {
-                            val list = mutableListOf<Int>()
-                            state.matchingBrackets?.let { (openPos, closePos) ->
-                                if (openPos.line == lineIdx && openPos.character < lineText.length) list.add(openPos.character)
-                                if (closePos.line == lineIdx && closePos.character < lineText.length) list.add(closePos.character)
-                            }
-                            list
+                        if (closePos != null && closePos.line == lineIdx && closePos.character < lineText.length) {
+                            list.add(closePos.character)
                         }
-
-                        // Selection bounds on this line
-                        val isLineInSelection = isSelectionActive && (lineIdx in selStart.line..selEnd.line)
-                        val selColStart = if (!isLineInSelection) 0 else if (lineIdx == selStart.line) selStart.character.coerceIn(0, lineText.length) else 0
-                        val selColEnd = if (!isLineInSelection) 0 else if (lineIdx == selEnd.line) selEnd.character.coerceIn(0, lineText.length) else lineText.length
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .defaultMinSize(minWidth = 2000.dp)
-                                .height(20.dp)
-                                .background(
-                                    if (isCurrentLine) CrestSurfaceHeader.copy(alpha = 0.4f) else Color.Transparent
-                                )
-                                .pointerInput(lineIdx, lineText) {
-                                    detectTapGestures(
-                                        onTap = { offset ->
-                                            val layout = textLayoutResult
-                                            val colIdx = if (layout == null) {
-                                                val fontWidthPx = 13.sp.toPx() * 0.6f
-                                                if (fontWidthPx > 0) (offset.x / fontWidthPx).toInt().coerceIn(0, lineText.length) else lineText.length
-                                            } else {
-                                                if (offset.x >= layout.size.width.toFloat()) {
-                                                    lineText.length
-                                                } else if (offset.x <= 0f) {
-                                                    0
-                                                } else {
-                                                    layout.getOffsetForPosition(offset).coerceIn(0, lineText.length)
-                                                }
-                                            }
-                                            engine.setCursor(lineIdx, colIdx)
-                                            refreshState()
-                                            requestInputFocus()
-                                        },
-                                        onLongPress = { offset ->
-                                            val layout = textLayoutResult
-                                            val colIdx = if (layout == null) {
-                                                val fontWidthPx = 13.sp.toPx() * 0.6f
-                                                if (fontWidthPx > 0) (offset.x / fontWidthPx).toInt().coerceIn(0, lineText.length) else lineText.length
-                                            } else {
-                                                if (offset.x >= layout.size.width.toFloat()) {
-                                                    lineText.length
-                                                } else if (offset.x <= 0f) {
-                                                    0
-                                                } else {
-                                                    layout.getOffsetForPosition(offset).coerceIn(0, lineText.length)
-                                                }
-                                            }
-                                            engine.selectWordAt(lineIdx, colIdx)
-                                            refreshState()
-                                            requestInputFocus()
-                                        }
-                                    )
-                                },
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            // 1. Matching bracket highlights (hitbox box style)
-                            for (bChar in bracketsOnThisLine) {
-                                val bracketOffsetPx = remember(textLayoutResult, bChar) {
-                                    if (textLayoutResult != null && bChar < lineText.length) {
-                                        try {
-                                            textLayoutResult?.getCursorRect(bChar)?.left ?: 0f
-                                        } catch (t: Throwable) { 0f }
-                                    } else 0f
-                                }
-                                val fontWidthPx = with(density) { 13.sp.toPx() * 0.6f }
-                                val charWidthDp = with(density) {
-                                    try {
-                                        (textLayoutResult?.getCursorRect(bChar)?.width ?: fontWidthPx).toDp()
-                                    } catch (t: Throwable) { fontWidthPx.toDp() }
-                                }
-                                val bracketOffsetDp = with(density) { bracketOffsetPx.toDp() }
-
-                                Box(
-                                    modifier = Modifier
-                                        .offset(x = bracketOffsetDp)
-                                        .width(charWidthDp.coerceAtLeast(8.dp))
-                                        .height(18.dp)
-                                        .background(
-                                            color = CrestAccentPrimary.copy(alpha = 0.25f),
-                                            shape = RoundedCornerShape(3.dp)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = CrestAccentPrimary,
-                                            shape = RoundedCornerShape(3.dp)
-                                        )
-                                )
-                            }
-
-                            val annotatedText = buildAnnotatedString {
-                                if (spans.isEmpty()) {
-                                    append(lineText)
-                                } else {
-                                    for (span in spans) {
-                                        val start = span.colStart.coerceAtMost(lineText.length)
-                                        val end = span.colEnd.coerceAtMost(lineText.length)
-                                        if (start < end) {
-                                            val style = getStyleForToken(span.tokenType)
-                                            pushStyle(style)
-                                            append(lineText.substring(start, end))
-                                            pop()
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text(
-                                text = annotatedText,
-                                fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = CrestTextActive,
-                                onTextLayout = { textLayoutResult = it }
-                            )
-
-                            // 2. Render cursor indicator precisely at cursor offset when no selection
-                            if (isCurrentLine && !isSelectionActive) {
-                                Box(
-                                    modifier = Modifier
-                                        .offset(x = cursorOffsetDp)
-                                        .width(2.dp)
-                                        .height(16.dp)
-                                        .background(CrestAccentPrimary)
-                                )
-                            }
-                        }
+                        list
                     }
 
-                    // Blank space below code lines - tapping sets cursor to last line end
+                    val isLineInSelection = isSelectionActive && (lineIdx in selStart.line..selEnd.line)
+                    val selColStart = if (!isLineInSelection) 0 else if (lineIdx == selStart.line) selStart.character.coerceIn(0, lineText.length) else 0
+                    val selColEnd = if (!isLineInSelection) 0 else if (lineIdx == selEnd.line) selEnd.character.coerceIn(0, lineText.length) else lineText.length
+
+                    EditorLineRow(
+                        lineIdx = lineIdx,
+                        lineId = lineModel?.id ?: lineIdx.toLong(),
+                        lineText = lineText,
+                        spans = spans,
+                        isCurrentLine = isCurrentLine,
+                        cursorCol = cursorCol,
+                        isSelectionActive = isSelectionActive,
+                        bracketsOnThisLine = bracketsOnThisLine,
+                        isLineInSelection = isLineInSelection,
+                        selColStart = selColStart,
+                        selColEnd = selColEnd,
+                        lineNumberWidth = lineNumberWidth,
+                        minEditorWidth = minEditorWidth,
+                        horizontalScroll = horizontalScroll,
+                        density = density,
+                        fontWidthPx = fontWidthPx,
+                        charWidthDp = charWidthDp,
+                        onLineClick = { lIdx, col ->
+                            engine.setCursor(lIdx, col)
+                            requestInputFocus()
+                        },
+                        onSelectWord = { lIdx, col ->
+                            engine.selectWordAt(lIdx, col)
+                            requestInputFocus()
+                        }
+                    )
+                }
+
+                // Blank space below code lines - tapping sets cursor to last line end
+                item(key = "bottom_spacer") {
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp)
                             .pointerInput(Unit) {
                                 detectTapGestures {
-                                    val lastLineIdx = (state.lineCount - 1).coerceAtLeast(0)
-                                    val lastLineText = state.lines.getOrNull(lastLineIdx) ?: ""
+                                    val lastLineIdx = (lines.size - 1).coerceAtLeast(0)
+                                    val lastLineText = lines.getOrNull(lastLineIdx)?.text ?: ""
                                     engine.setCursor(lastLineIdx, lastLineText.length)
-                                    refreshState()
                                     requestInputFocus()
                                 }
                             }
                     )
                 }
+            }
 
-                // 3. Single Full-Editor Overlay Canvas for Selection Highlights & Handles
+            // Selection overlay adapter wrapping current lines dynamically
+            if (isSelectionActive) {
+                val lineHeightPx = with(density) { 20.dp.toPx() }
+                val scrollYPx = lazyListState.firstVisibleItemIndex * lineHeightPx + lazyListState.firstVisibleItemScrollOffset
+                val scrollYDp = with(density) { scrollYPx.toDp() }
+                val scrollXDp = with(density) { horizontalScroll.value.toDp() }
+
+                val renderStateAdapter = remember(state, lines) {
+                    val lineList = object : java.util.AbstractList<String>() {
+                        override val size: Int get() = lines.size
+                        override fun get(index: Int): String = lines.getOrNull(index)?.text ?: ""
+                    }
+                    RenderState(
+                        uri = state.uri,
+                        languageId = state.languageId,
+                        lines = lineList,
+                        lineCount = state.lineCount.coerceAtLeast(lines.size),
+                        cursor = state.cursor,
+                        selection = state.selection,
+                        canUndo = state.canUndo,
+                        canRedo = state.canRedo,
+                        isModified = state.isModified,
+                        matchingBrackets = state.matchingBrackets
+                    )
+                }
+
                 CrestSelectionOverlay(
                     engine = engine,
-                    state = state,
+                    state = renderStateAdapter,
                     modifier = Modifier
-                        .padding(vertical = 8.dp, horizontal = 12.dp)
-                        .matchParentSize()
+                        .offset(
+                            x = lineNumberWidth - scrollXDp,
+                            y = 8.dp - scrollYDp
+                        )
                 )
             }
         }
 
-        // 4. Floating Context Menu Toolbar (Copy, Cut, Paste, Select All)
+        // Floating Context Menu Toolbar (Copy, Cut, Paste, Select All)
         if (isSelectionActive) {
             Box(modifier = Modifier.fillMaxSize()) {
                 CrestSelectionToolbar(
@@ -462,6 +418,197 @@ fun CrestNativeEditor(
                     onStateRefresh = { refreshState() },
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Isolated Composable row function.
+ * Enables Compose compiler to skip recomposing unaffected rows when cursor or selection changes.
+ */
+@Composable
+private fun EditorLineRow(
+    lineIdx: Int,
+    lineId: Long,
+    lineText: String,
+    spans: List<TokenSpan>,
+    isCurrentLine: Boolean,
+    cursorCol: Int,
+    isSelectionActive: Boolean,
+    bracketsOnThisLine: List<Int>,
+    isLineInSelection: Boolean,
+    selColStart: Int,
+    selColEnd: Int,
+    lineNumberWidth: Dp,
+    minEditorWidth: Dp,
+    horizontalScroll: androidx.compose.foundation.ScrollState,
+    density: Density,
+    fontWidthPx: Float,
+    charWidthDp: Dp,
+    onLineClick: (Int, Int) -> Unit,
+    onSelectWord: (Int, Int) -> Unit,
+) {
+    val i = lineIdx + 1
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Line Number Column
+        Text(
+            text = "$i",
+            color = if (isCurrentLine) CrestAccentPrimary else CrestTextSecondary.copy(alpha = 0.5f),
+            fontSize = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .width(lineNumberWidth)
+                .height(20.dp)
+                .padding(end = 12.dp)
+                .pointerInput(lineIdx) {
+                    detectTapGestures {
+                        onLineClick(lineIdx, cursorCol.coerceIn(0, lineText.length))
+                    }
+                }
+        )
+
+        // Code Text Content Area for this line
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(horizontalScroll)
+        ) {
+            var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+            val cursorOffsetPx = remember(textLayoutResult, cursorCol, isCurrentLine) {
+                if (!isCurrentLine) 0f
+                else if (textLayoutResult != null) {
+                    try {
+                        textLayoutResult?.getCursorRect(cursorCol)?.left ?: (cursorCol * fontWidthPx)
+                    } catch (t: Throwable) {
+                        cursorCol * fontWidthPx
+                    }
+                } else {
+                    cursorCol * fontWidthPx
+                }
+            }
+            val cursorOffsetDp = with(density) { cursorOffsetPx.toDp() }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(min = (minEditorWidth - lineNumberWidth).coerceAtLeast(0.dp))
+                    .defaultMinSize(minWidth = 2000.dp)
+                    .height(20.dp)
+                    .background(
+                        if (isCurrentLine) CrestSurfaceHeader.copy(alpha = 0.4f) else Color.Transparent
+                    )
+                    .pointerInput(lineIdx, lineText) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val layout = textLayoutResult
+                                val colIdx = if (layout == null) {
+                                    if (fontWidthPx > 0) (offset.x / fontWidthPx).toInt().coerceIn(0, lineText.length) else lineText.length
+                                } else {
+                                    if (offset.x >= layout.size.width.toFloat()) {
+                                        lineText.length
+                                    } else if (offset.x <= 0f) {
+                                        0
+                                    } else {
+                                        layout.getOffsetForPosition(offset).coerceIn(0, lineText.length)
+                                    }
+                                }
+                                onLineClick(lineIdx, colIdx)
+                            },
+                            onLongPress = { offset ->
+                                val layout = textLayoutResult
+                                val colIdx = if (layout == null) {
+                                    if (fontWidthPx > 0) (offset.x / fontWidthPx).toInt().coerceIn(0, lineText.length) else lineText.length
+                                } else {
+                                    if (offset.x >= layout.size.width.toFloat()) {
+                                        lineText.length
+                                    } else if (offset.x <= 0f) {
+                                        0
+                                    } else {
+                                        layout.getOffsetForPosition(offset).coerceIn(0, lineText.length)
+                                    }
+                                }
+                                onSelectWord(lineIdx, colIdx)
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.CenterStart
+            ) {
+                // 1. Matching bracket highlights
+                for (bChar in bracketsOnThisLine) {
+                    val bracketOffsetPx = remember(textLayoutResult, bChar) {
+                        if (textLayoutResult != null && bChar < lineText.length) {
+                            try {
+                                textLayoutResult?.getCursorRect(bChar)?.left ?: (bChar * fontWidthPx)
+                            } catch (t: Throwable) {
+                                bChar * fontWidthPx
+                            }
+                        } else {
+                            bChar * fontWidthPx
+                        }
+                    }
+                    val bracketOffsetDp = with(density) { bracketOffsetPx.toDp() }
+
+                    Box(
+                        modifier = Modifier
+                            .offset(x = bracketOffsetDp)
+                            .width(charWidthDp.coerceAtLeast(8.dp))
+                            .height(18.dp)
+                            .background(
+                                color = CrestAccentPrimary.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(3.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = CrestAccentPrimary,
+                                shape = RoundedCornerShape(3.dp)
+                            )
+                    )
+                }
+
+                val annotatedText = buildAnnotatedString {
+                    if (spans.isEmpty()) {
+                        append(lineText)
+                    } else {
+                        for (span in spans) {
+                            val start = span.colStart.coerceAtMost(lineText.length)
+                            val end = span.colEnd.coerceAtMost(lineText.length)
+                            if (start < end) {
+                                val style = getStyleForToken(span.tokenType)
+                                pushStyle(style)
+                                append(lineText.substring(start, end))
+                                pop()
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = annotatedText,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = CrestTextActive,
+                    onTextLayout = { textLayoutResult = it }
+                )
+
+                // 2. Render cursor indicator precisely at cursor offset when no selection
+                if (isCurrentLine && !isSelectionActive) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = cursorOffsetDp)
+                            .width(2.dp)
+                            .height(16.dp)
+                            .background(CrestAccentPrimary)
+                    )
+                }
             }
         }
     }

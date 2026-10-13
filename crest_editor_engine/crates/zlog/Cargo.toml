@@ -1,0 +1,15 @@
+[package]
+name = "zlog"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Minimal logging stub for Zed-derived crates"
+
+[dependencies]
+log = "0.4"
+env_logger = { version = "0.11", optional = true }
+
+[features]
+default = []
+test-support = ["env_logger"]

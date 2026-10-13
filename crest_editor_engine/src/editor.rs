@@ -21,6 +21,25 @@ pub struct RenderState {
     pub matching_brackets: Option<(Position, Position)>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditorState {
+    pub uri: String,
+    pub language_id: String,
+    pub line_count: usize,
+    pub cursor: Position,
+    pub selection: Selection,
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub is_modified: bool,
+    pub matching_brackets: Option<(Position, Position)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditResponse {
+    pub change: Option<TextChangeEvent>,
+    pub state: Option<EditorState>,
+}
+
 pub struct EditorEngine {
     documents: HashMap<String, Document>,
     histories: HashMap<String, UndoHistory>,
@@ -191,7 +210,8 @@ impl EditorEngine {
             };
             doc.buffer.get_text_range(del_start, start_pos)
         } else {
-            doc.buffer.get_text_range(current_sel.start(), current_sel.end())
+            doc.buffer
+                .get_text_range(current_sel.start(), current_sel.end())
         };
 
         let change = doc.apply_delete_backspace()?;
@@ -241,6 +261,15 @@ impl EditorEngine {
             doc.selection = entry.selection_before;
             doc.version += 1;
             doc.is_modified = true;
+
+            // LSP sync
+            let lang = doc.language_id.clone();
+            let ver = doc.version;
+            let full_text = doc.buffer.get_text();
+            if let Some(client) = self.lsp_clients.get(&lang) {
+                let _ = client.did_change(&active_uri, ver, &full_text);
+            }
+
             true
         } else {
             false
@@ -269,6 +298,15 @@ impl EditorEngine {
             doc.selection = entry.selection_after;
             doc.version += 1;
             doc.is_modified = true;
+
+            // LSP sync
+            let lang = doc.language_id.clone();
+            let ver = doc.version;
+            let full_text = doc.buffer.get_text();
+            if let Some(client) = self.lsp_clients.get(&lang) {
+                let _ = client.did_change(&active_uri, ver, &full_text);
+            }
+
             true
         } else {
             false
@@ -343,7 +381,9 @@ impl EditorEngine {
     pub fn select_word_at(&mut self, line: usize, col: usize) {
         if let Some(doc) = self.get_active_document_mut() {
             let line_count = doc.buffer.line_count();
-            if line >= line_count { return; }
+            if line >= line_count {
+                return;
+            }
             let line_str = match doc.buffer.get_line(line) {
                 Some(s) => s,
                 None => return,
@@ -370,10 +410,8 @@ impl EditorEngine {
             while end_col < chars.len() && is_word_char(chars[end_col]) {
                 end_col += 1;
             }
-            doc.selection = Selection::new(
-                Position::new(line, start_col),
-                Position::new(line, end_col),
-            );
+            doc.selection =
+                Selection::new(Position::new(line, start_col), Position::new(line, end_col));
         }
     }
 
@@ -384,7 +422,10 @@ impl EditorEngine {
             if start != end {
                 doc.buffer.get_text_range(start, end)
             } else {
-                doc.buffer.get_line(start.line).unwrap_or_default().to_string()
+                doc.buffer
+                    .get_line(start.line)
+                    .unwrap_or_default()
+                    .to_string()
             }
         } else {
             String::new()
@@ -395,7 +436,9 @@ impl EditorEngine {
         let active_uri = self.active_uri.clone()?;
         let doc = self.documents.get_mut(&active_uri)?;
         let sel = doc.selection;
-        if sel.is_empty() { return None; }
+        if sel.is_empty() {
+            return None;
+        }
 
         let start = sel.start();
         let end = sel.end();
@@ -414,6 +457,14 @@ impl EditorEngine {
             selection_after: Selection::caret(start),
         });
 
+        // LSP sync
+        let lang = doc.language_id.clone();
+        let ver = doc.version;
+        let full_text = doc.buffer.get_text();
+        if let Some(client) = self.lsp_clients.get(&lang) {
+            let _ = client.did_change(&active_uri, ver, &full_text);
+        }
+
         Some(change)
     }
 
@@ -421,21 +472,22 @@ impl EditorEngine {
         if let Some(doc) = self.get_active_document_mut() {
             let last_line = doc.buffer.line_count().saturating_sub(1);
             let last_col = doc.buffer.line_length_chars(last_line);
-            doc.selection = Selection::new(
-                Position::new(0, 0),
-                Position::new(last_line, last_col),
-            );
+            doc.selection = Selection::new(Position::new(0, 0), Position::new(last_line, last_col));
         }
     }
 
-    pub fn highlight_visible_lines(&self, start_line: usize, end_line: usize) -> Vec<(usize, Vec<TokenSpan>)> {
+    pub fn highlight_visible_lines(
+        &self,
+        start_line: usize,
+        end_line: usize,
+    ) -> Vec<(usize, Vec<TokenSpan>)> {
         let mut result = Vec::new();
         if let Some(doc) = self.get_active_document() {
             let highlighter = SyntaxHighlighter::for_language(&doc.language_id);
             let max_line = doc.buffer.line_count().min(end_line + 1);
             for l_idx in start_line..max_line {
                 if let Some(line_str) = doc.buffer.get_line(l_idx) {
-                    let spans = highlighter.highlight_line(line_str);
+                    let spans = highlighter.highlight_line(&line_str);
                     result.push((l_idx, spans));
                 }
             }
@@ -453,7 +505,12 @@ impl EditorEngine {
             uri: doc.uri.clone(),
             language_id: doc.language_id.clone(),
             lines: (0..doc.buffer.line_count())
-                .map(|i| doc.buffer.get_line(i).unwrap_or("").to_string())
+                .map(|i| {
+                    doc.buffer
+                        .get_line(i)
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                })
                 .collect(),
             line_count: doc.buffer.line_count(),
             cursor: doc.selection.head,
@@ -465,10 +522,93 @@ impl EditorEngine {
         })
     }
 
-    pub fn connect_lsp(&mut self, language_id: &str, server_command: &str, args: &[&str]) -> Result<(), String> {
+    pub fn get_editor_state(&self) -> Option<EditorState> {
+        let doc = self.get_active_document()?;
+        let uri = doc.uri.clone();
+        let history = self.histories.get(&uri);
+        let matching_brackets = doc.buffer.find_matching_bracket(doc.selection.head);
+
+        Some(EditorState {
+            uri: doc.uri.clone(),
+            language_id: doc.language_id.clone(),
+            line_count: doc.buffer.line_count(),
+            cursor: doc.selection.head,
+            selection: doc.selection,
+            can_undo: history.map(|h| h.can_undo()).unwrap_or(false),
+            can_redo: history.map(|h| h.can_redo()).unwrap_or(false),
+            is_modified: doc.is_modified,
+            matching_brackets,
+        })
+    }
+
+    pub fn get_line(&self, line: usize) -> Option<String> {
+        let doc = self.get_active_document()?;
+        doc.buffer.get_line(line).map(|s| s.to_string())
+    }
+
+    pub fn get_lines(&self, start_line: usize, end_line: usize) -> Vec<String> {
+        let mut result = Vec::new();
+        if let Some(doc) = self.get_active_document() {
+            let max_line = doc.buffer.line_count().min(end_line + 1);
+            for i in start_line..max_line {
+                result.push(doc.buffer.get_line(i).unwrap_or_default().to_string());
+            }
+        }
+        result
+    }
+
+    pub fn insert_text_with_state(&mut self, text: &str) -> EditResponse {
+        let change = self.insert_text(text);
+        let state = self.get_editor_state();
+        EditResponse { change, state }
+    }
+
+    pub fn delete_backspace_with_state(&mut self) -> EditResponse {
+        let change = self.delete_backspace();
+        let state = self.get_editor_state();
+        EditResponse { change, state }
+    }
+
+    pub fn delete_selection_with_state(&mut self) -> EditResponse {
+        let change = self.delete_selection();
+        let state = self.get_editor_state();
+        EditResponse { change, state }
+    }
+
+    pub fn move_cursor_with_state(&mut self, direction: &str, select: bool) -> Option<EditorState> {
+        self.move_cursor(direction, select);
+        self.get_editor_state()
+    }
+
+    pub fn set_selection_with_state(
+        &mut self,
+        anchor: Position,
+        head: Position,
+    ) -> Option<EditorState> {
+        self.set_selection(anchor, head);
+        self.get_editor_state()
+    }
+
+    pub fn undo_with_state(&mut self) -> (bool, Option<EditorState>) {
+        let res = self.undo();
+        (res, self.get_editor_state())
+    }
+
+    pub fn redo_with_state(&mut self) -> (bool, Option<EditorState>) {
+        let res = self.redo();
+        (res, self.get_editor_state())
+    }
+
+    pub fn connect_lsp(
+        &mut self,
+        language_id: &str,
+        server_command: &str,
+        args: &[&str],
+    ) -> Result<(), String> {
         let client = LspClient::spawn(server_command, args)?;
         let arc_client = Arc::new(client);
-        self.lsp_clients.insert(language_id.to_string(), arc_client.clone());
+        self.lsp_clients
+            .insert(language_id.to_string(), arc_client.clone());
 
         // Initialize LSP with workspace
         let _ = arc_client.initialize("file:///workspace");
@@ -476,32 +616,55 @@ impl EditorEngine {
         // Sync existing open document for this language if any
         if let Some(doc) = self.get_active_document() {
             if doc.language_id == language_id {
-                let _ = arc_client.did_open(&doc.uri, &doc.language_id, doc.version, &doc.buffer.get_text());
+                let _ = arc_client.did_open(
+                    &doc.uri,
+                    &doc.language_id,
+                    doc.version,
+                    &doc.buffer.get_text(),
+                );
             }
         }
         Ok(())
     }
 
     pub fn lsp_completion(&self) -> Result<Vec<LspCompletionItem>, String> {
-        let doc = self.get_active_document().ok_or_else(|| "No active document".to_string())?;
-        let client = self.lsp_clients.get(&doc.language_id).ok_or_else(|| "No LSP client".to_string())?;
-        let line_str = doc.buffer.get_line(doc.selection.head.line).unwrap_or("");
+        let doc = self
+            .get_active_document()
+            .ok_or_else(|| "No active document".to_string())?;
+        let client = self
+            .lsp_clients
+            .get(&doc.language_id)
+            .ok_or_else(|| "No LSP client".to_string())?;
+        let line = doc.buffer.get_line(doc.selection.head.line);
+        let line_str = line.as_deref().unwrap_or("");
         let utf16_col = utf8_col_to_utf16_col(line_str, doc.selection.head.character) as u32;
         client.completion(&doc.uri, doc.selection.head.line as u32, utf16_col)
     }
 
     pub fn lsp_hover(&self) -> Result<Option<LspHover>, String> {
-        let doc = self.get_active_document().ok_or_else(|| "No active document".to_string())?;
-        let client = self.lsp_clients.get(&doc.language_id).ok_or_else(|| "No LSP client".to_string())?;
-        let line_str = doc.buffer.get_line(doc.selection.head.line).unwrap_or("");
+        let doc = self
+            .get_active_document()
+            .ok_or_else(|| "No active document".to_string())?;
+        let client = self
+            .lsp_clients
+            .get(&doc.language_id)
+            .ok_or_else(|| "No LSP client".to_string())?;
+        let line = doc.buffer.get_line(doc.selection.head.line);
+        let line_str = line.as_deref().unwrap_or("");
         let utf16_col = utf8_col_to_utf16_col(line_str, doc.selection.head.character) as u32;
         client.hover(&doc.uri, doc.selection.head.line as u32, utf16_col)
     }
 
     pub fn lsp_goto_definition(&self) -> Result<Vec<LspLocation>, String> {
-        let doc = self.get_active_document().ok_or_else(|| "No active document".to_string())?;
-        let client = self.lsp_clients.get(&doc.language_id).ok_or_else(|| "No LSP client".to_string())?;
-        let line_str = doc.buffer.get_line(doc.selection.head.line).unwrap_or("");
+        let doc = self
+            .get_active_document()
+            .ok_or_else(|| "No active document".to_string())?;
+        let client = self
+            .lsp_clients
+            .get(&doc.language_id)
+            .ok_or_else(|| "No LSP client".to_string())?;
+        let line = doc.buffer.get_line(doc.selection.head.line);
+        let line_str = line.as_deref().unwrap_or("");
         let utf16_col = utf8_col_to_utf16_col(line_str, doc.selection.head.character) as u32;
         client.goto_definition(&doc.uri, doc.selection.head.line as u32, utf16_col)
     }

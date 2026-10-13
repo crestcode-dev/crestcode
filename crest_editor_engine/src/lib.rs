@@ -37,7 +37,8 @@ mod tests {
     #[test]
     fn test_unicode_position_mapping() {
         use buffer::position::{
-            byte_col_to_char_col, char_col_to_byte_col, utf16_col_to_utf8_col, utf8_col_to_utf16_col,
+            byte_col_to_char_col, char_col_to_byte_col, utf16_col_to_utf8_col,
+            utf8_col_to_utf16_col,
         };
 
         let sample = "🚀 Hello 世界";
@@ -63,15 +64,56 @@ mod tests {
         engine.open_document("file:///test.rs", "rust", "fn main() {}");
 
         engine.insert_text("\n// test comment");
-        assert!(engine.get_active_document().unwrap().buffer.get_text().contains("// test comment"));
+        assert!(engine
+            .get_active_document()
+            .unwrap()
+            .buffer
+            .get_text()
+            .contains("// test comment"));
 
         let undone = engine.undo();
         assert!(undone);
-        assert_eq!(engine.get_active_document().unwrap().buffer.get_text(), "fn main() {}");
+        assert_eq!(
+            engine.get_active_document().unwrap().buffer.get_text(),
+            "fn main() {}"
+        );
 
         let redone = engine.redo();
         assert!(redone);
-        assert!(engine.get_active_document().unwrap().buffer.get_text().contains("// test comment"));
+        assert!(engine
+            .get_active_document()
+            .unwrap()
+            .buffer
+            .get_text()
+            .contains("// test comment"));
+
+        // Undo again to return to "fn main() {}"
+        assert!(engine.undo());
+        assert_eq!(
+            engine.get_active_document().unwrap().buffer.get_text(),
+            "fn main() {}"
+        );
+
+        // Test delete_selection followed by undo/redo
+        engine.set_selection(Position::new(0, 3), Position::new(0, 7)); // select "main"
+        let deleted = engine.delete_selection();
+        assert!(deleted.is_some());
+        assert_eq!(
+            engine.get_active_document().unwrap().buffer.get_line(0).as_deref(),
+            Some("fn () {}")
+        );
+
+        assert!(engine.undo());
+        assert_eq!(
+            engine.get_active_document().unwrap().buffer.get_line(0).as_deref(),
+            Some("fn main() {}")
+        );
+
+        assert!(engine.redo());
+        assert_eq!(
+            engine.get_active_document().unwrap().buffer.get_line(0).as_deref(),
+            Some("fn () {}")
+        );
     }
 
     #[test]
@@ -122,7 +164,7 @@ mod tests {
         // Insert opening bracket '(' -> should auto-close to '()'
         engine.insert_text("(");
         let doc = engine.get_active_document().unwrap();
-        assert_eq!(doc.buffer.get_line(0), Some("fn test()"));
+        assert_eq!(doc.buffer.get_line(0).as_deref(), Some("fn test()"));
         assert_eq!(doc.selection.head, Position::new(0, 8)); // Cursor inside ()
 
         // Verify bracket matching detects (0,7) and (0,8)
@@ -135,7 +177,7 @@ mod tests {
         // Delete backspace between () -> should erase both ( and )
         engine.delete_backspace();
         let doc_after = engine.get_active_document().unwrap();
-        assert_eq!(doc_after.buffer.get_line(0), Some("fn test"));
+        assert_eq!(doc_after.buffer.get_line(0).as_deref(), Some("fn test"));
     }
 
     #[test]
@@ -150,10 +192,99 @@ mod tests {
         // Delete selection
         engine.delete_selection();
         let doc = engine.get_active_document().unwrap();
-        assert_eq!(doc.buffer.get_line(0), Some("hello  test"));
+        assert_eq!(doc.buffer.get_line(0).as_deref(), Some("hello  test"));
 
         // Select all
         engine.select_all();
         assert_eq!(engine.get_selected_text(), "hello  test");
+    }
+
+    #[test]
+    fn test_enter_key_line_splitting_and_cursor_positioning() {
+        let mut engine = EditorEngine::new();
+        engine.open_document("file:///enter_test.rs", "rust", "fn main() {\n    println!(\"hello\");\n}");
+        assert_eq!(engine.get_active_document().unwrap().buffer.line_count(), 3);
+
+        // Position cursor after '{' at line 0, char 11
+        engine.set_selection(Position::new(0, 11), Position::new(0, 11));
+
+        // Press Enter
+        let change = engine.insert_text("\n").expect("Expected TextChangeEvent");
+        assert_eq!(change.start, Position::new(0, 11));
+        assert_eq!(change.end, Position::new(1, 0));
+        assert_eq!(change.text, "\n");
+
+        let doc = engine.get_active_document().unwrap();
+        assert_eq!(doc.buffer.line_count(), 4);
+        assert_eq!(doc.buffer.get_line(0).as_deref(), Some("fn main() {"));
+        assert_eq!(doc.selection.head, Position::new(1, 0));
+
+        // Backspace should merge line 1 back into line 0
+        let backspace_change = engine.delete_backspace().expect("Expected backspace change");
+        assert_eq!(backspace_change.text, "");
+
+        let doc_after = engine.get_active_document().unwrap();
+        assert_eq!(doc_after.buffer.line_count(), 3);
+        assert_eq!(doc_after.selection.head, Position::new(0, 11));
+    }
+
+    #[test]
+    fn test_70_line_paste_selection_replacement_and_undo_redo() {
+        let mut engine = EditorEngine::new();
+        let mut initial_70_lines = String::new();
+        for i in 0..70 {
+            initial_70_lines.push_str(&format!("let val_{} = {};\n", i, i * 10));
+        }
+        engine.open_document("file:///paste_test.rs", "rust", &initial_70_lines);
+        assert_eq!(engine.get_active_document().unwrap().buffer.line_count(), 71);
+
+        // Select lines 10..20
+        engine.set_selection(Position::new(10, 0), Position::new(20, 0));
+        assert!(!engine.get_active_document().unwrap().selection.is_empty());
+
+        // Replace selection with 10 lines
+        let mut replacement = String::new();
+        for i in 0..10 {
+            replacement.push_str(&format!("let replaced_{} = true;\n", i));
+        }
+        let change = engine.insert_text(&replacement).expect("Expected change");
+        assert_eq!(change.start, Position::new(10, 0));
+        assert_eq!(change.end, Position::new(20, 0));
+        assert_eq!(change.text, replacement);
+
+        let doc = engine.get_active_document().unwrap();
+        assert_eq!(doc.buffer.line_count(), 71);
+
+        // Undo replacement
+        assert!(engine.undo());
+        let doc_undo = engine.get_active_document().unwrap();
+        assert_eq!(doc_undo.buffer.get_line(10).as_deref(), Some("let val_10 = 100;"));
+
+        // Redo replacement
+        assert!(engine.redo());
+        let doc_redo = engine.get_active_document().unwrap();
+        assert_eq!(doc_redo.buffer.get_line(10).as_deref(), Some("let replaced_0 = true;"));
+    }
+
+    #[test]
+    fn test_unicode_multiline_editing_and_syntax() {
+        let mut engine = EditorEngine::new();
+        engine.open_document("file:///unicode_test.rs", "rust", "let greet = \"👋 Hello 🌍\";\n// 🚀 Comment");
+
+        // Insert at end of line 0
+        engine.set_selection(Position::new(0, 24), Position::new(0, 24));
+        engine.insert_text("\n");
+
+        let doc = engine.get_active_document().unwrap();
+        assert_eq!(doc.buffer.line_count(), 3);
+        assert_eq!(doc.selection.head, Position::new(1, 0));
+
+        // Highlight line 0 and line 1
+        let spans = engine.highlight_visible_lines(0, 2);
+        assert_eq!(spans.len(), 3);
+        // Line 0 keyword 'let'
+        assert_eq!(spans[0].1[0].token_type, syntax::TokenType::Keyword);
+        // Line 2 comment '// 🚀 Comment'
+        assert_eq!(spans[2].1[0].token_type, syntax::TokenType::Comment);
     }
 }
