@@ -131,6 +131,10 @@ class EditorLineTracker {
             result.add(currentLines[oldSuffixStart + i])
         }
 
+        currentLines = result
+        return currentLines
+    }
+
     fun setLines(newTextLines: List<String>): List<EditorLine> {
         currentLines = newTextLines.map { EditorLine(nextId++, it) }
         return currentLines
