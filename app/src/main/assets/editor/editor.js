@@ -87,12 +87,15 @@ const result = greetCrestUser("Developer");
         minimap: { enabled: false }, // Space optimization for mobile
         scrollBeyondLastLine: false,
         smoothScrolling: true,
-        contextmenu: true,
+        contextmenu: false,
         quickSuggestions: true,
         cursorBlinking: 'smooth'
       });
 
       isReady = true;
+
+      // Enable Mobile Touch Drag Handles & Dynamic Floating Toolbar
+      setupMobileTouchSelection(editor, container);
 
       // Add Ctrl+S / Cmd+S save command shortcut
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
@@ -253,7 +256,368 @@ const result = greetCrestUser("Developer");
     },
     redo: function() {
       if (editor) editor.trigger('keyboard', 'redo', null);
+    },
+    paste: function() {
+      if (typeof window.pasteClipboard === 'function') {
+        window.pasteClipboard();
+      }
     }
   };
+
+  // ============================================================
+  // Mobile Touch Selection, Handles & Dynamic Floating Toolbar
+  // ============================================================
+  function setupMobileTouchSelection(editor, container) {
+    const startHandle = document.getElementById('start-handle');
+    const endHandle = document.getElementById('end-handle');
+    const floatingToolbar = document.getElementById('floating-toolbar');
+    const floatingCopy = document.getElementById('floating-copy');
+    const floatingPaste = document.getElementById('floating-paste');
+
+    if (!startHandle || !endHandle || !floatingToolbar) return;
+
+    const editorNode = editor.getDomNode();
+    let pressTimer = null;
+    let startX = 0, startY = 0;
+    let activeDrag = null;
+    let isScrolling = false;
+    let scrollResetTimer = null;
+    let suppressMouseUntil = 0;
+    let isLongPressConfirmed = false;
+    let isHandleMoving = false;
+    let handleStillTimer = null;
+    let pendingUiRaf = null;
+
+    // Fast Bulk Paste Functionality
+    window.pasteClipboard = async function() {
+      const model = editor.getModel();
+      if (!model) return;
+      let text = '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          text = await navigator.clipboard.readText();
+        }
+      } catch (_) {}
+      if (!text && window.CrestAndroidBridge && typeof window.CrestAndroidBridge.getClipboardText === 'function') {
+        try {
+          text = window.CrestAndroidBridge.getClipboardText();
+        } catch (_) {}
+      }
+      if (!text) text = prompt('Paste text here:');
+      if (!text) return;
+
+      const selection = editor.getSelection();
+      const range = (selection && !selection.isEmpty())
+        ? selection
+        : (selection ? new monaco.Range(selection.startLineNumber, selection.startColumn, selection.startLineNumber, selection.startColumn) : model.getFullModelRange());
+
+      editor.executeEdits('ui-paste', [{ range, text, forceMoveMarkers: true }]);
+      editor.pushUndoStop();
+      editor.focus();
+      floatingToolbar.classList.remove('visible');
+    };
+
+    function updateCopyToolbar(cachedWrapRect, cachedEditorRect) {
+      if (isHandleMoving) {
+        floatingToolbar.classList.remove('visible');
+        return;
+      }
+      const selection = editor.getSelection();
+      const hasSelection = selection && !selection.isEmpty();
+      const wrapRect = cachedWrapRect || container.getBoundingClientRect();
+      const editorRect = cachedEditorRect || editorNode.getBoundingClientRect();
+      const editorLeft = editorRect.left - wrapRect.left;
+      const editorTop = editorRect.top - wrapRect.top;
+
+      if (hasSelection) {
+        floatingCopy.style.display = '';
+        floatingPaste.style.display = '';
+        const start = editor.getScrolledVisiblePosition(selection.getStartPosition());
+        const end = editor.getScrolledVisiblePosition(selection.getEndPosition());
+        if (!start || !end) {
+          floatingToolbar.classList.remove('visible');
+          return;
+        }
+        const toolbarWidth = floatingToolbar.offsetWidth || 140;
+        const toolbarHeight = floatingToolbar.offsetHeight || 32;
+        const isSingleLine = selection.startLineNumber === selection.endLineNumber;
+        const startXPos = editorLeft + start.left;
+        const endXPos = editorLeft + end.left;
+        const selectionMidX = isSingleLine ? ((startXPos + endXPos) / 2) : (startXPos + 35);
+        const left = Math.max(4, Math.min(Math.round(selectionMidX - (toolbarWidth / 2)), wrapRect.width - toolbarWidth - 4));
+
+        const gap = 2; // Pura chipka ke directly above selection
+        const topOfSelection = editorTop + start.top;
+        let top = Math.round(topOfSelection - toolbarHeight - gap);
+        if (top < 2) {
+          top = Math.round(topOfSelection + (start.height || 19) + gap);
+        }
+        floatingToolbar.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+        floatingToolbar.classList.add('visible');
+      } else if (Date.now() < suppressMouseUntil) {
+        floatingCopy.style.display = 'none';
+        floatingPaste.style.display = '';
+        const pos = editor.getPosition();
+        if (!pos) return;
+        const visible = editor.getScrolledVisiblePosition(pos);
+        if (!visible) return;
+        const toolbarWidth = floatingToolbar.offsetWidth || 75;
+        const toolbarHeight = floatingToolbar.offsetHeight || 32;
+        const left = Math.max(4, Math.min(Math.round(editorLeft + visible.left - (toolbarWidth / 2)), wrapRect.width - toolbarWidth - 4));
+        const gap = 2;
+        let top = Math.round(editorTop + visible.top - toolbarHeight - gap);
+        if (top < 2) top = Math.round(editorTop + visible.top + (visible.height || 19) + gap);
+
+        floatingToolbar.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+        floatingToolbar.classList.add('visible');
+      } else {
+        floatingToolbar.classList.remove('visible');
+      }
+    }
+
+    function positionForHandle(handle, position, isStart, wrapRect, editorRect) {
+      const visible = editor.getScrolledVisiblePosition(position);
+      if (!visible) {
+        handle.classList.remove('visible');
+        return;
+      }
+      const x = Math.round(editorRect.left - wrapRect.left + visible.left - 12);
+      const y = Math.round(editorRect.top - wrapRect.top + visible.top + (isStart ? -3 : (visible.height || 18)));
+      handle.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      handle.classList.add('visible');
+    }
+
+    function updateHandles(wrapRect, editorRect) {
+      if (activeDrag) return;
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        startHandle.classList.remove('visible');
+        endHandle.classList.remove('visible');
+        return;
+      }
+      positionForHandle(startHandle, selection.getStartPosition(), true, wrapRect, editorRect);
+      positionForHandle(endHandle, selection.getEndPosition(), false, wrapRect, editorRect);
+    }
+
+    function scheduleUiUpdate() {
+      if (pendingUiRaf) return;
+      pendingUiRaf = requestAnimationFrame(() => {
+        pendingUiRaf = null;
+        const wrapRect = container.getBoundingClientRect();
+        const editorRect = editorNode.getBoundingClientRect();
+        updateHandles(wrapRect, editorRect);
+        updateCopyToolbar(wrapRect, editorRect);
+      });
+    }
+
+    floatingPaste.addEventListener('click', () => window.pasteClipboard());
+    floatingCopy.addEventListener('click', async () => {
+      const sel = editor.getSelection();
+      const model = editor.getModel();
+      if (!sel || sel.isEmpty() || !model) return;
+      const text = model.getValueInRange(sel);
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.position = 'fixed';
+        temp.style.left = '-9999px';
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+      }
+    });
+
+    ['touchstart', 'mousedown', 'pointerdown'].forEach(evt => {
+      floatingToolbar.addEventListener(evt, e => e.stopPropagation());
+    });
+
+    function dropSyntheticEvent(event) {
+      const target = event.target;
+      if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) return;
+      if (Date.now() < suppressMouseUntil || isLongPressConfirmed) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return false;
+      }
+    }
+
+    ['mousedown', 'mouseup', 'click'].forEach(evt => {
+      window.addEventListener(evt, dropSyntheticEvent, true);
+      document.addEventListener(evt, dropSyntheticEvent, true);
+      editorNode.addEventListener(evt, dropSyntheticEvent, true);
+      container.addEventListener(evt, dropSyntheticEvent, true);
+    });
+
+    document.addEventListener('selectionchange', event => {
+      if (Date.now() < suppressMouseUntil || isLongPressConfirmed) event.stopImmediatePropagation();
+    }, true);
+
+    container.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); }, true);
+
+    function selectWordAt(x, y) {
+      const target = editor.getTargetAtClientPoint(x, y);
+      if (!target || !target.position) return;
+      const model = editor.getModel();
+      const word = model.getWordAtPosition(target.position);
+      if (!word) {
+        editor.setPosition(target.position);
+        scheduleUiUpdate();
+        return;
+      }
+      editor.setSelection({
+        startLineNumber: target.position.lineNumber,
+        startColumn: word.startColumn,
+        endLineNumber: target.position.lineNumber,
+        endColumn: word.endColumn
+      });
+      scheduleUiUpdate();
+    }
+
+    editorNode.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) { clearTimeout(pressTimer); return; }
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      clearTimeout(pressTimer);
+      isLongPressConfirmed = false;
+
+      pressTimer = setTimeout(() => {
+        if (!isScrolling) {
+          isLongPressConfirmed = true;
+          suppressMouseUntil = Date.now() + 5000;
+          selectWordAt(startX, startY);
+          if (navigator.vibrate) { try { navigator.vibrate(35); } catch(_) {} }
+        }
+      }, 380);
+    }, { passive: true });
+
+    editorNode.addEventListener('touchmove', e => {
+      if (isLongPressConfirmed) return;
+      if (e.touches && e.touches.length === 1) {
+        const touch = e.touches[0];
+        if (Math.abs(touch.clientX - startX) > 12 || Math.abs(touch.clientY - startY) > 12) {
+          clearTimeout(pressTimer);
+          isScrolling = true;
+          clearTimeout(scrollResetTimer);
+          scrollResetTimer = setTimeout(() => { isScrolling = false; }, 200);
+        }
+      } else {
+        clearTimeout(pressTimer);
+      }
+    }, { passive: true });
+
+    editorNode.addEventListener('touchend', e => {
+      clearTimeout(pressTimer);
+      if (isLongPressConfirmed) {
+        e.preventDefault();
+        e.stopPropagation();
+        isLongPressConfirmed = false;
+        suppressMouseUntil = Date.now() + 300;
+        return;
+      }
+      if (Date.now() < suppressMouseUntil) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }, { passive: false });
+
+    editorNode.addEventListener('touchcancel', () => {
+      clearTimeout(pressTimer);
+      isLongPressConfirmed = false;
+    }, { passive: true });
+
+    function beginHandleDrag(isStart, event) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressMouseUntil = 0;
+      const model = editor.getModel();
+      const initialSelection = editor.getSelection();
+      if (!model || !initialSelection || initialSelection.isEmpty()) return;
+
+      floatingToolbar.classList.remove('visible');
+      isHandleMoving = true;
+      clearTimeout(handleStillTimer);
+
+      const fixedAnchor = isStart ? initialSelection.getEndPosition() : initialSelection.getStartPosition();
+      const pointerId = event.pointerId;
+      activeDrag = { isStart };
+      let pendingDragRaf = null;
+      let latestX = event.clientX, latestY = event.clientY;
+
+      function processDrag() {
+        pendingDragRaf = null;
+        if (!activeDrag) return;
+        const target = editor.getTargetAtClientPoint(latestX, latestY);
+        if (!target || !target.position) return;
+        const moving = target.position;
+        const fixedOffset = model.getOffsetAt(fixedAnchor);
+        const movingOffset = model.getOffsetAt(moving);
+        const start = movingOffset <= fixedOffset ? moving : fixedAnchor;
+        const end = movingOffset <= fixedOffset ? fixedAnchor : moving;
+
+        editor.setSelection({
+          startLineNumber: start.lineNumber,
+          startColumn: start.column,
+          endLineNumber: end.lineNumber,
+          endColumn: end.column
+        });
+
+        const current = editor.getSelection();
+        if (current) {
+          const wrapRect = container.getBoundingClientRect();
+          const editorRect = editorNode.getBoundingClientRect();
+          positionForHandle(startHandle, current.getStartPosition(), true, wrapRect, editorRect);
+          positionForHandle(endHandle, current.getEndPosition(), false, wrapRect, editorRect);
+        }
+      }
+
+      function move(e) {
+        if (!activeDrag || e.pointerId !== pointerId) return;
+        if (!isHandleMoving) {
+          isHandleMoving = true;
+          floatingToolbar.classList.remove('visible');
+        }
+        latestX = e.clientX;
+        latestY = e.clientY;
+        clearTimeout(handleStillTimer);
+        handleStillTimer = setTimeout(() => {
+          isHandleMoving = false;
+          scheduleUiUpdate();
+        }, 250);
+
+        if (!pendingDragRaf) pendingDragRaf = requestAnimationFrame(processDrag);
+      }
+
+      function finish(e) {
+        if (e.pointerId !== pointerId) return;
+        clearTimeout(handleStillTimer);
+        isHandleMoving = false;
+        if (pendingDragRaf) { cancelAnimationFrame(pendingDragRaf); pendingDragRaf = null; }
+        window.removeEventListener('pointermove', move, true);
+        window.removeEventListener('pointerup', finish, true);
+        window.removeEventListener('pointercancel', finish, true);
+        activeDrag = null;
+        scheduleUiUpdate();
+      }
+
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', finish, true);
+      window.addEventListener('pointercancel', finish, true);
+    }
+
+    startHandle.addEventListener('pointerdown', e => beginHandleDrag(true, e));
+    endHandle.addEventListener('pointerdown', e => beginHandleDrag(false, e));
+
+    editor.onDidChangeCursorSelection(scheduleUiUpdate);
+    editor.onDidScrollChange(scheduleUiUpdate);
+    editor.onDidLayoutChange(scheduleUiUpdate);
+    window.addEventListener('resize', scheduleUiUpdate);
+  }
 
 })();

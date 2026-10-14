@@ -131,6 +131,7 @@ html, body {
   width: 100%;
   height: 100%;
   position: relative;
+  overflow: hidden;
   background: var(--bg-editor);
 }
 
@@ -145,4 +146,92 @@ html, body {
 /* Mobile fixes for Monaco */
 .monaco-editor {
   padding-top: 4px;
+}
+
+/* Touch Selection Handles with 44px Instant-Grip Hit-box */
+.selection-handle {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent-blue, #38bdf8);
+  box-shadow: 0 0 0 2px #1e1e1e;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform;
+}
+
+.selection-handle::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  border-radius: 50%;
+}
+
+.selection-handle.visible {
+  display: block;
+}
+
+/* Dynamic Floating Action Menu (Pura Chipka Ke - 2px Gap) */
+#floating-toolbar {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2000;
+  padding: 3px;
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  background: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  touch-action: manipulation;
+  will-change: transform;
+  gap: 4px;
+}
+
+#floating-toolbar.visible {
+  display: flex;
+}
+
+#floating-toolbar button {
+  padding: 5px 10px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  background: #0f172a;
+  color: var(--text-main, #fff);
+  font: 12px sans-serif;
+  cursor: pointer;
+}
+
+#floating-toolbar button:active {
+  background: #334155;
+}
+
+/* Prevent Android IME & OS gesture conflicts */
+.monaco-editor textarea.inputarea,
+.monaco-editor .native-edit-context {
+  pointer-events: none !important;
+}
+
+.monaco-editor .cursor {
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+.monaco-editor .overview-ruler,
+.monaco-editor .decorationsOverviewRuler {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
 }

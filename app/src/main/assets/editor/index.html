@@ -9,7 +9,14 @@
 </head>
 <body>
   <div id="app">
-    <main id="editor-container"></main>
+    <main id="editor-container">
+      <div id="floating-toolbar">
+        <button id="floating-copy" type="button">📋 Copy</button>
+        <button id="floating-paste" type="button">📋 Paste</button>
+      </div>
+      <button id="start-handle" class="selection-handle" aria-label="Selection start"></button>
+      <button id="end-handle" class="selection-handle" aria-label="Selection end"></button>
+    </main>
   </div>
 
   <script src="vs/loader.js"></script>
