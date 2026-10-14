@@ -39,7 +39,7 @@ object CrestTraceReporter {
         sb.append("| Metric | Value |\n")
         sb.append("| :--- | :--- |\n")
         sb.append("| **Application Version** | CrestCode v0.2.0 (Build 2) |\n")
-        sb.append("| **Device Hardware** | ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}) |\n")
+        sb.append("| **Device Hardware** | ${if (Build.MANUFACTURER != null && Build.MODEL != null && Build.DEVICE != null) "${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})" else "Unknown"} |\n")
         sb.append("| **Android OS Version** | Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) |\n")
         sb.append("| **Supported ABIs** | ${Build.SUPPORTED_ABIS.joinToString(", ")} |\n")
         sb.append("| **Recording Duration** | ${String.format(Locale.US, "%.2f s (%.1f ms)", durationSec, durationMs)} |\n")
