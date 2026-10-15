@@ -16,3 +16,5 @@ local.properties
 acode/
 *.keystore
 *.jks
+.agents
+skills-lock.json
