@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
 
                 val monacoBridge = remember {
                     MonacoBridge(
+                        context = context.applicationContext,
                         onContentChangedCallback = { _ ->
                             viewModel.markActiveTabModified(true)
                         },
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
 
                 ModalNavigationDrawer(
                     drawerState = drawerState,
+                    gesturesEnabled = drawerState.isOpen,
                     drawerContent = {
                         ModalDrawerSheet {
                             CrestFileDrawer(
@@ -336,10 +338,11 @@ fun CrestEditorScreen(
                 }
             }
 
-            setOnTouchListener { v, _ ->
+            setOnTouchListener { v, event ->
                 if (!v.hasFocus()) {
                     v.requestFocus()
                 }
+                v.parent?.requestDisallowInterceptTouchEvent(true)
                 false
             }
 

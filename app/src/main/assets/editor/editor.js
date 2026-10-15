@@ -293,17 +293,18 @@ const result = greetCrestUser("Developer");
       const model = editor.getModel();
       if (!model) return;
       let text = '';
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          text = await navigator.clipboard.readText();
-        }
-      } catch (_) {}
-      if (!text && window.CrestAndroidBridge && typeof window.CrestAndroidBridge.getClipboardText === 'function') {
+      if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.getClipboardText === 'function') {
         try {
           text = window.CrestAndroidBridge.getClipboardText();
         } catch (_) {}
       }
-      if (!text) text = prompt('Paste text here:');
+      if (!text) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            text = await navigator.clipboard.readText();
+          }
+        } catch (_) {}
+      }
       if (!text) return;
 
       const selection = editor.getSelection();
@@ -346,11 +347,14 @@ const result = greetCrestUser("Developer");
         const selectionMidX = isSingleLine ? ((startXPos + endXPos) / 2) : (startXPos + 35);
         const left = Math.max(4, Math.min(Math.round(selectionMidX - (toolbarWidth / 2)), wrapRect.width - toolbarWidth - 4));
 
-        const gap = 2; // Pura chipka ke directly above selection
+        const lineHeight = start.height || 19;
         const topOfSelection = editorTop + start.top;
-        let top = Math.round(topOfSelection - toolbarHeight - gap);
-        if (top < 2) {
-          top = Math.round(topOfSelection + (start.height || 19) + gap);
+        const gapAboveHandle = 10; // Clears startHandle circle (which begins at topOfSelection - 3)
+        let top = Math.round(topOfSelection - toolbarHeight - gapAboveHandle);
+        if (top < 4) {
+          // Flipped below: ensure we clear the end handle circle (which extends ~24px below the line)
+          const handleOffset = isSingleLine ? 28 : 6;
+          top = Math.round(topOfSelection + lineHeight + handleOffset);
         }
         floatingToolbar.style.transform = `translate3d(${left}px, ${top}px, 0)`;
         floatingToolbar.classList.add('visible');
@@ -364,7 +368,7 @@ const result = greetCrestUser("Developer");
         const toolbarWidth = floatingToolbar.offsetWidth || 75;
         const toolbarHeight = floatingToolbar.offsetHeight || 32;
         const left = Math.max(4, Math.min(Math.round(editorLeft + visible.left - (toolbarWidth / 2)), wrapRect.width - toolbarWidth - 4));
-        const gap = 2;
+        const gap = 8;
         let top = Math.round(editorTop + visible.top - toolbarHeight - gap);
         if (top < 2) top = Math.round(editorTop + visible.top + (visible.height || 19) + gap);
 
@@ -546,6 +550,10 @@ const result = greetCrestUser("Developer");
 
       const fixedAnchor = isStart ? initialSelection.getEndPosition() : initialSelection.getStartPosition();
       const pointerId = event.pointerId;
+      const targetHandle = isStart ? startHandle : endHandle;
+      if (pointerId !== undefined && typeof targetHandle.setPointerCapture === 'function') {
+        try { targetHandle.setPointerCapture(pointerId); } catch (_) {}
+      }
       activeDrag = { isStart };
       let pendingDragRaf = null;
       let latestX = event.clientX, latestY = event.clientY;
@@ -599,6 +607,9 @@ const result = greetCrestUser("Developer");
         clearTimeout(handleStillTimer);
         isHandleMoving = false;
         if (pendingDragRaf) { cancelAnimationFrame(pendingDragRaf); pendingDragRaf = null; }
+        if (pointerId !== undefined && typeof targetHandle.releasePointerCapture === 'function') {
+          try { targetHandle.releasePointerCapture(pointerId); } catch (_) {}
+        }
         window.removeEventListener('pointermove', move, true);
         window.removeEventListener('pointerup', finish, true);
         window.removeEventListener('pointercancel', finish, true);
@@ -613,6 +624,11 @@ const result = greetCrestUser("Developer");
 
     startHandle.addEventListener('pointerdown', e => beginHandleDrag(true, e));
     endHandle.addEventListener('pointerdown', e => beginHandleDrag(false, e));
+
+    ['touchstart', 'touchmove'].forEach(evt => {
+      startHandle.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+      endHandle.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+    });
 
     editor.onDidChangeCursorSelection(scheduleUiUpdate);
     editor.onDidScrollChange(scheduleUiUpdate);

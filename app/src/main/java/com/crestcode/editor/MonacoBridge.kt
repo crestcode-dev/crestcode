@@ -7,6 +7,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 class MonacoBridge(
+    private val context: android.content.Context? = null,
     private var onReadyCallback: (() -> Unit)? = null,
     private var onContentChangedCallback: ((versionId: Int) -> Unit)? = null,
     private var onSaveRequestedCallback: ((content: String) -> Unit)? = null
@@ -21,6 +22,19 @@ class MonacoBridge(
         this.onReadyCallback = onReady
         this.onContentChangedCallback = onContentChanged
         this.onSaveRequestedCallback = onSaveRequested
+    }
+
+    @JavascriptInterface
+    fun getClipboardText(): String {
+        return try {
+            val ctx = context ?: return ""
+            val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            val item = clipboard?.primaryClip?.getItemAt(0)
+            item?.coerceToText(ctx)?.toString() ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading system clipboard: ${e.message}")
+            ""
+        }
     }
 
     @JavascriptInterface
