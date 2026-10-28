@@ -53,7 +53,12 @@ open class NativeTerminalClient(
             val clipData = clipboard?.primaryClip
             if (clipData != null && clipData.itemCount > 0) {
                 val pasteText = clipData.getItemAt(0).coerceToText(context).toString()
-                session?.write(pasteText)
+                val emulator = session?.emulator
+                if (emulator != null) {
+                    emulator.paste(pasteText)
+                } else {
+                    session?.write(pasteText)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to paste text from clipboard", e)

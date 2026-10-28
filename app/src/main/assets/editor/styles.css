@@ -223,7 +223,9 @@ html, body {
 
 /* Prevent Android IME & OS gesture conflicts */
 .monaco-editor textarea.inputarea,
-.monaco-editor .native-edit-context {
+.monaco-editor .native-edit-context,
+.monaco-editor textarea.ime-text-area,
+.monaco-editor textarea {
   pointer-events: none !important;
 }
 

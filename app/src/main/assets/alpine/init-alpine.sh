@@ -1,5 +1,5 @@
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
-export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@localhost \[\033[39m\]\w \[\033[0m\]\\$ "
+export PS1="\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ "
 export HOME=/public
 export TERM=xterm-256color
 
@@ -64,12 +64,9 @@ fi
 
     echo "$$" > "$PREFIX/pid"
 
-    # Create initrc if it doesn't exist
-    # initrc runs in bash so we can use bash features
-if [ ! -e "$PREFIX/alpine/initrc" ]; then
-    cat <<'EOF' > "$PREFIX/alpine/initrc"
+    # Create initrc if it doesn't exist or needs update
+    cat <<'EOF' > /initrc
 # Source rc files if they exist
-
 if [ -f "/etc/profile" ]; then
     source "/etc/profile"
 fi
@@ -81,7 +78,10 @@ export HOME=/public
 export TERM=xterm-256color
 SHELL=/bin/bash
 export PIP_BREAK_SYSTEM_PACKAGES=1
-export PS1='\[\033[1;32m\]alpine\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]\$ '
+export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
+
+# Enable bracketed paste in readline (stops line-by-line execution on paste)
+bind 'set enable-bracketed-paste on' 2>/dev/null || true
 
 # Replicate behaviour of termux
 alias clear='reset'
@@ -89,12 +89,21 @@ alias clear='reset'
 if [ -f "$HOME/.bashrc" ]; then
     source "$HOME/.bashrc"
 fi
-
 EOF
-fi
+    chmod +x /initrc
 
+    # Also mirror to $PREFIX/alpine/initrc if directory exists
+    if [ -d "$PREFIX/alpine" ]; then
+        cp -f /initrc "$PREFIX/alpine/initrc" 2>/dev/null || true
+    fi
 
-chmod +x "$PREFIX/alpine/initrc"
+    # Ensure /etc/profile.d has PS1 override
+    if [ -d /etc/profile.d ]; then
+        cat <<'EOF' > /etc/profile.d/crestcode.sh
+export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
+bind 'set enable-bracketed-paste on' 2>/dev/null || true
+EOF
+    fi
 
 # First-time terminal open script execution
 if [ ! -f "$PREFIX/.first_boot_script_run" ]; then
@@ -116,5 +125,6 @@ elif [ -x "$PREFIX/alpine/bin/bash" ]; then
 elif [ -x "$PREFIX/alpine/usr/bin/bash" ]; then
     exec "$PREFIX/alpine/usr/bin/bash" --rcfile /initrc -i
 else
+    export ENV=/initrc
     exec /bin/sh -i
 fi

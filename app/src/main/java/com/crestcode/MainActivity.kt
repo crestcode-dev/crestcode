@@ -1,8 +1,10 @@
 package com.crestcode
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
+import android.view.inputmethod.InputMethodManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -27,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.crestcode.core.settings.SettingsManager
 import com.crestcode.editor.MonacoBridge
 import com.crestcode.runtime.AlpineManager
+import com.crestcode.runtime.TerminalSessionManager
 import com.crestcode.ui.MainViewModel
 import com.crestcode.ui.TerminalScreen
 import com.crestcode.ui.components.*
@@ -59,6 +62,9 @@ class MainActivity : ComponentActivity() {
                 val activeTabId by viewModel.activeTabId.collectAsState()
                 val activeLanguage by viewModel.activeLanguage.collectAsState()
                 val showTerminal by viewModel.showTerminal.collectAsState()
+
+                var isCtrlActive by remember { mutableStateOf(false) }
+                var isAltActive by remember { mutableStateOf(false) }
 
                 val showCreateDialog by viewModel.showCreateDialog.collectAsState()
                 val isFolderCreation by viewModel.isFolderCreation.collectAsState()
@@ -222,7 +228,51 @@ class MainActivity : ComponentActivity() {
                         },
                         bottomBar = {
                             Column {
-                                CrestExtraKeysBar()
+                                TermuxExtraKeysToolbar(
+                                    isCtrlActive = isCtrlActive,
+                                    isAltActive = isAltActive,
+                                    onToggleCtrl = {
+                                        isCtrlActive = !isCtrlActive
+                                        TerminalSessionManager.activeClient?.isCtrlActive = isCtrlActive
+                                    },
+                                    onToggleAlt = {
+                                        isAltActive = !isAltActive
+                                        TerminalSessionManager.activeClient?.isAltActive = isAltActive
+                                    },
+                                    onToggleKeyboard = {
+                                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                        if (showTerminal) {
+                                            TerminalSessionManager.activeClient?.terminalView?.let { view ->
+                                                view.requestFocus()
+                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                                            }
+                                        } else {
+                                            webView?.let { wv ->
+                                                wv.requestFocus()
+                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                                            }
+                                        }
+                                    },
+                                    onKeyClick = { key ->
+                                        if (showTerminal) {
+                                            TerminalSessionManager.activeSession?.write(key)
+                                        } else {
+                                            when (key) {
+                                                "\u001b" -> MonacoBridge.handleKey(webView, "ESC")
+                                                "\t" -> MonacoBridge.handleKey(webView, "TAB")
+                                                "\u001b[1~" -> MonacoBridge.handleKey(webView, "HOME")
+                                                "\u001b[4~" -> MonacoBridge.handleKey(webView, "END")
+                                                "\u001b[5~" -> MonacoBridge.handleKey(webView, "PGUP")
+                                                "\u001b[6~" -> MonacoBridge.handleKey(webView, "PGDN")
+                                                "\u001b[A" -> MonacoBridge.handleKey(webView, "UP")
+                                                "\u001b[B" -> MonacoBridge.handleKey(webView, "DOWN")
+                                                "\u001b[C" -> MonacoBridge.handleKey(webView, "RIGHT")
+                                                "\u001b[D" -> MonacoBridge.handleKey(webView, "LEFT")
+                                                else -> MonacoBridge.typeText(webView, key)
+                                            }
+                                        }
+                                    }
+                                )
                                 CrestStatusBar(
                                     language = activeLanguage
                                 )

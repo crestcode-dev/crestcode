@@ -7,16 +7,18 @@ printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 
 echo "[2/4] Adding Alpine Edge repositories..."
 
-cat >> /etc/apk/repositories <<'EOF'
+if ! grep -q "edge/main" /etc/apk/repositories 2>/dev/null; then
+    cat >> /etc/apk/repositories <<'EOF'
 https://dl-cdn.alpinelinux.org/alpine/edge/main
 https://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
+fi
 
 echo "[3/4] Updating APK indexes..."
 apk update || true
 
-echo "[4/4] Installing Bash & Archive CLI Tools (7z, tar, zip, unzip, pv)..."
-apk add bash p7zip tar zip unzip pv || true
+echo "[4/4] Installing Bash..."
+apk add bash || true
 
 echo
 echo "================================"

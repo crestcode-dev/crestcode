@@ -37,6 +37,7 @@ class AlpineManager(private val context: Context) {
             onProgress("Copying environment scripts...")
             copyAssetFile("alpine/init-sandbox.sh", File(filesDir, "init-sandbox.sh"))
             copyAssetFile("alpine/init-alpine.sh", File(filesDir, "init-alpine.sh"))
+            copyAssetFile("alpine/setup-alpine.sh", File(filesDir, "setup-alpine.sh"))
             makeExecutable(File(filesDir, "init-sandbox.sh"))
             makeExecutable(File(filesDir, "init-alpine.sh"))
             makeExecutable(File(filesDir, "setup-alpine.sh"))

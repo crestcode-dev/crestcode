@@ -360,6 +360,12 @@ public final class TerminalView extends View {
                 if (mEmulator == null) return true;
 
                 Editable content = getEditable();
+                String contentStr = content.toString();
+                if (contentStr.length() > 1 && (contentStr.contains("\n") || contentStr.contains("\r"))) {
+                    mEmulator.paste(contentStr);
+                    content.clear();
+                    return true;
+                }
                 sendTextToTerminal(content);
                 content.clear();
                 return true;

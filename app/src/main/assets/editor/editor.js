@@ -89,7 +89,8 @@ const result = greetCrestUser("Developer");
         smoothScrolling: true,
         contextmenu: false,
         quickSuggestions: true,
-        cursorBlinking: 'smooth'
+        cursorBlinking: 'smooth',
+        editContext: false
       });
 
       isReady = true;
@@ -260,6 +261,46 @@ const result = greetCrestUser("Developer");
     paste: function() {
       if (typeof window.pasteClipboard === 'function') {
         window.pasteClipboard();
+      }
+    },
+    handleKey: function(key) {
+      if (!editor) return;
+      editor.focus();
+      switch (key) {
+        case 'ESC':
+          editor.trigger('keyboard', 'closeFindWidget', null);
+          const sel = editor.getSelection();
+          if (sel && !sel.isEmpty()) {
+            editor.setSelection(new monaco.Selection(sel.positionLineNumber, sel.positionColumn, sel.positionLineNumber, sel.positionColumn));
+          }
+          break;
+        case 'TAB':
+          editor.trigger('keyboard', 'tab', null);
+          break;
+        case 'HOME':
+          editor.trigger('keyboard', 'cursorHome', null);
+          break;
+        case 'END':
+          editor.trigger('keyboard', 'cursorEnd', null);
+          break;
+        case 'PGUP':
+          editor.trigger('keyboard', 'cursorPageUp', null);
+          break;
+        case 'PGDN':
+          editor.trigger('keyboard', 'cursorPageDown', null);
+          break;
+        case 'UP':
+          editor.trigger('keyboard', 'cursorUp', null);
+          break;
+        case 'DOWN':
+          editor.trigger('keyboard', 'cursorDown', null);
+          break;
+        case 'LEFT':
+          editor.trigger('keyboard', 'cursorLeft', null);
+          break;
+        case 'RIGHT':
+          editor.trigger('keyboard', 'cursorRight', null);
+          break;
       }
     }
   };
@@ -439,10 +480,67 @@ const result = greetCrestUser("Developer");
       floatingToolbar.addEventListener(evt, e => e.stopPropagation());
     });
 
+    let lastScrollTime = 0;
+    let isUserTouchDragging = false;
+    let lastUserTouchDragTime = 0;
+
+    function getInputElements() {
+      return editorNode.querySelectorAll('textarea, input, [contenteditable], .native-edit-context, .inputarea, .ime-text-area');
+    }
+
+    function disableImeForScroll(isInit = false) {
+      if (!isInit) {
+        lastScrollTime = Date.now();
+      }
+      getInputElements().forEach(el => {
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+          el.readOnly = true;
+          el.setAttribute('inputmode', 'none');
+        }
+        if (document.activeElement === el) {
+          el.blur();
+        }
+      });
+    }
+
+    function enableImeForTyping() {
+      if (isScrolling || (Date.now() - lastScrollTime) < 300) return;
+      getInputElements().forEach(el => {
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+          el.readOnly = false;
+          el.setAttribute('inputmode', 'text');
+        }
+      });
+      const mainInput = editorNode.querySelector('textarea.inputarea, .native-edit-context, textarea');
+      if (mainInput) {
+        // If already activeElement (e.g. keyboard was dismissed by Android Back button),
+        // blur first then focus to force Android/Chrome IME to re-open on tap!
+        if (document.activeElement === mainInput) {
+          mainInput.blur();
+        }
+        mainInput.focus();
+      }
+    }
+
+    function setupInputAreaFocusGuard() {
+      getInputElements().forEach(el => {
+        if (el._imeGuarded) return;
+        el._imeGuarded = true;
+        const origFocus = el.focus.bind(el);
+        el.focus = function(opts) {
+          if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+            return;
+          }
+          return origFocus(opts);
+        };
+      });
+    }
+
     function dropSyntheticEvent(event) {
       const target = event.target;
       if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) return;
-      if (Date.now() < suppressMouseUntil || isLongPressConfirmed) {
+      if (isScrolling || (Date.now() - lastScrollTime) < 300 || Date.now() < suppressMouseUntil || isLongPressConfirmed) {
+        if (isScrolling) disableImeForScroll();
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
@@ -456,6 +554,17 @@ const result = greetCrestUser("Developer");
       editorNode.addEventListener(evt, dropSyntheticEvent, true);
       container.addEventListener(evt, dropSyntheticEvent, true);
     });
+
+    // Capture-phase listener for Monaco internal gesture tap: prevent focusTextArea during scroll, or trigger typing on real tap
+    editorNode.addEventListener('-monaco-gesturetap', function(event) {
+      if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        return false;
+      }
+      enableImeForTyping();
+    }, true);
 
     document.addEventListener('selectionchange', event => {
       if (Date.now() < suppressMouseUntil || isLongPressConfirmed) event.stopImmediatePropagation();
@@ -489,6 +598,7 @@ const result = greetCrestUser("Developer");
       startY = touch.clientY;
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
+      isUserTouchDragging = false;
 
       pressTimer = setTimeout(() => {
         if (!isScrolling) {
@@ -502,13 +612,19 @@ const result = greetCrestUser("Developer");
 
     editorNode.addEventListener('touchmove', e => {
       if (isLongPressConfirmed) return;
-      if (e.touches && e.touches.length === 1) {
+      if (e.touches && e.touches.length > 0) {
         const touch = e.touches[0];
-        if (Math.abs(touch.clientX - startX) > 12 || Math.abs(touch.clientY - startY) > 12) {
+        const dx = Math.abs(touch.clientX - startX);
+        const dy = Math.abs(touch.clientY - startY);
+        if (dx > 8 || dy > 8 || e.touches.length > 1) {
           clearTimeout(pressTimer);
+          isUserTouchDragging = true;
+          lastUserTouchDragTime = Date.now();
           isScrolling = true;
+          lastScrollTime = Date.now();
+          disableImeForScroll();
           clearTimeout(scrollResetTimer);
-          scrollResetTimer = setTimeout(() => { isScrolling = false; }, 200);
+          scrollResetTimer = setTimeout(() => { isScrolling = false; }, 350);
         }
       } else {
         clearTimeout(pressTimer);
@@ -517,6 +633,7 @@ const result = greetCrestUser("Developer");
 
     editorNode.addEventListener('touchend', e => {
       clearTimeout(pressTimer);
+      isUserTouchDragging = false;
       if (isLongPressConfirmed) {
         e.preventDefault();
         e.stopPropagation();
@@ -529,12 +646,51 @@ const result = greetCrestUser("Developer");
         e.stopPropagation();
         return;
       }
+      if (isScrolling) {
+        lastScrollTime = Date.now();
+        disableImeForScroll();
+        clearTimeout(scrollResetTimer);
+        scrollResetTimer = setTimeout(() => { isScrolling = false; }, 350);
+        return;
+      }
+
+      // Tap detected (finger lifted without scrolling):
+      const touch = e.changedTouches && e.changedTouches[0];
+      if (touch) {
+        const dx = Math.abs(touch.clientX - startX);
+        const dy = Math.abs(touch.clientY - startY);
+        if (dx < 8 && dy < 8 && (Date.now() - lastScrollTime) >= 300) {
+          enableImeForTyping();
+        }
+      }
     }, { passive: false });
 
     editorNode.addEventListener('touchcancel', () => {
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
+      isUserTouchDragging = false;
     }, { passive: true });
+
+    editorNode.addEventListener('click', e => {
+      const target = e.target;
+      if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) {
+        return;
+      }
+      if (Date.now() < suppressMouseUntil || isLongPressConfirmed) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
+      if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+        disableImeForScroll();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
+      enableImeForTyping();
+    }, true);
 
     function beginHandleDrag(isStart, event) {
       event.preventDefault();
@@ -630,8 +786,21 @@ const result = greetCrestUser("Developer");
       endHandle.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, { passive: false });
     });
 
+    setupInputAreaFocusGuard();
+    disableImeForScroll(true); // Prevent keyboard from auto-opening on initial page load!
+
     editor.onDidChangeCursorSelection(scheduleUiUpdate);
-    editor.onDidScrollChange(scheduleUiUpdate);
+    editor.onDidScrollChange((e) => {
+      scheduleUiUpdate();
+      const isTouchScroll = isUserTouchDragging || (Date.now() - lastUserTouchDragTime < 400);
+      if (isTouchScroll && (!e || e.scrollTopChanged || e.scrollLeftChanged)) {
+        isScrolling = true;
+        lastScrollTime = Date.now();
+        disableImeForScroll();
+        clearTimeout(scrollResetTimer);
+        scrollResetTimer = setTimeout(() => { isScrolling = false; }, 350);
+      }
+    });
     editor.onDidLayoutChange(scheduleUiUpdate);
     window.addEventListener('resize', scheduleUiUpdate);
   }

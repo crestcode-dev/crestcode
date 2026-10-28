@@ -121,5 +121,19 @@ class MonacoBridge(
         fun redo(webView: WebView?) {
             webView?.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.redo) { window.CrestEditorAPI.redo(); }", null)
         }
+
+        fun handleKey(webView: WebView?, key: String) {
+            webView?.evaluateJavascript(
+                "if (window.CrestEditorAPI && window.CrestEditorAPI.handleKey) { window.CrestEditorAPI.handleKey(" +
+                        JSONObject.quote(key) + "); }", null
+            )
+        }
+
+        fun typeText(webView: WebView?, text: String) {
+            webView?.evaluateJavascript(
+                "if (window.CrestEditorAPI && window.CrestEditorAPI.typeText) { window.CrestEditorAPI.typeText(" +
+                        JSONObject.quote(text) + "); }", null
+            )
+        }
     }
 }
