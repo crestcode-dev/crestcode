@@ -42,6 +42,21 @@ class AlpineManager(private val context: Context) {
             makeExecutable(File(filesDir, "init-alpine.sh"))
             makeExecutable(File(filesDir, "setup-alpine.sh"))
 
+            try {
+                copyAssetFile("alpine/crest@crestcode.rsa.pub", File(filesDir, "crest@crestcode.rsa.pub"))
+            } catch (e: Exception) {
+                Log.w(TAG, "Optional key copy skipped: ${e.message}")
+            }
+
+            try {
+                val cpmAsset = "alpine/$arch/cpm"
+                val cpmFile = File(filesDir, "cpm")
+                copyAssetFile(cpmAsset, cpmFile)
+                makeExecutable(cpmFile)
+            } catch (e: Exception) {
+                Log.w(TAG, "Optional cpm binary copy skipped: ${e.message}")
+            }
+
             // 2. Fail-safe: Copy native binaries directly to filesDir
             onProgress("Setting up PRoot native binaries...")
             copyNativeBinaries(arch)
@@ -61,6 +76,18 @@ class AlpineManager(private val context: Context) {
                 Log.d(TAG, "Extracting $tempTarGz to $alpineDir")
                 extractTarGz(tempTarGz, alpineDir)
                 tempTarGz.delete()
+
+                // Pre-install CPM into alpine /usr/local/bin
+                val alpineLocalBin = File(alpineDir, "usr/local/bin")
+                if (!alpineLocalBin.exists()) alpineLocalBin.mkdirs()
+                val alpineCpm = File(alpineLocalBin, "cpm")
+                try {
+                    copyAssetFile("alpine/$arch/cpm", alpineCpm)
+                    makeExecutable(alpineCpm)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Optional cpm rootfs setup skipped: ${e.message}")
+                }
+
                 onProgress("Alpine Linux extracted successfully!")
             }
 
