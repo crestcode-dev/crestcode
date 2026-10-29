@@ -2,10 +2,10 @@
 
 set -e
 
-echo "[1/5] Setting DNS..."
+echo "[1/4] Setting DNS..."
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 
-echo "[2/5] Trusting CrestCode Repository Key..."
+echo "[2/4] Trusting CrestCode Repository Key..."
 mkdir -p /etc/apk/keys
 if [ -f "$PREFIX/crest@crestcode.rsa.pub" ]; then
     cp -f "$PREFIX/crest@crestcode.rsa.pub" /etc/apk/keys/
@@ -23,7 +23,7 @@ g4ma9/JeSTDUPCnU2bRMkHahQz/IaCOPmjtHqXMApO/zwTQPUClAgxouf44E+0pE
 EOF
 fi
 
-echo "[3/5] Adding Alpine & CrestCode Repositories..."
+echo "[3/4] Adding Alpine & CrestCode Repositories..."
 if ! grep -q "edge/main" /etc/apk/repositories 2>/dev/null; then
     cat >> /etc/apk/repositories <<'EOF'
 https://dl-cdn.alpinelinux.org/alpine/edge/main
@@ -37,17 +37,9 @@ https://heysaish.github.io/Crest-Packages
 EOF
 fi
 
-echo "[4/5] Setting up CPM (Crest Package Manager)..."
-mkdir -p /usr/local/bin
-if [ -f "$PREFIX/cpm" ]; then
-    cp -f "$PREFIX/cpm" /usr/local/bin/cpm
-    chmod +x /usr/local/bin/cpm
-fi
-
-echo "[5/5] Updating APK indexes & installing core packages..."
+echo "[4/4] Updating APK indexes & installing Bash and CPM..."
 apk update || true
-apk add bash || true
-apk add -u cpm || true
+apk add bash cpm || true
 
 echo
 echo "=========================================="
