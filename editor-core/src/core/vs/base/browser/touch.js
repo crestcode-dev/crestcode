@@ -97,6 +97,8 @@ export class Gesture extends Disposable {
             const evt = this.newGestureEvent(EventType.Start, touch.target);
             evt.pageX = touch.pageX;
             evt.pageY = touch.pageY;
+            evt.clientX = touch.clientX;
+            evt.clientY = touch.clientY;
             this.dispatchEvent(evt);
         }
         if (this.dispatched) {
@@ -121,6 +123,8 @@ export class Gesture extends Disposable {
                 const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
+                evt.clientX = touch.clientX;
+                evt.clientY = touch.clientY;
                 this.dispatchEvent(evt);
             }
             else if (!data.hasMoved && holdTime >= Gesture.HOLD_DELAY
@@ -129,6 +133,8 @@ export class Gesture extends Disposable {
                 const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
+                evt.clientX = touch.clientX;
+                evt.clientY = touch.clientY;
                 this.dispatchEvent(evt);
             }
             else if (activeTouchCount === 1) {
@@ -253,6 +259,8 @@ export class Gesture extends Disposable {
             evt.translationY = touch.pageY - data.rollingPageY.at(-1);
             evt.pageX = touch.pageX;
             evt.pageY = touch.pageY;
+            evt.clientX = touch.clientX;
+            evt.clientY = touch.clientY;
             this.dispatchEvent(evt);
             // only keep a few data points, to average the final speed
             if (data.rollingPageX.length > 3) {

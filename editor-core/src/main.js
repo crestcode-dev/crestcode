@@ -614,6 +614,9 @@ const result = greetCrestUser("Developer");
           el.readOnly = true;
           el.setAttribute('inputmode', 'none');
         }
+        if (document.activeElement === el) {
+          el.blur();
+        }
       });
 
       pressTimer = setTimeout(() => {
@@ -683,6 +686,11 @@ const result = greetCrestUser("Developer");
         const dx = Math.abs(touch.clientX - startX);
         const dy = Math.abs(touch.clientY - startY);
         if (dx < 8 && dy < 8) {
+          const target = editor.getTargetAtClientPoint(touch.clientX, touch.clientY);
+          if (target && target.position) {
+            editor.setPosition(target.position);
+            scheduleUiUpdate();
+          }
           enableImeForTyping();
         }
       }
@@ -706,6 +714,11 @@ const result = greetCrestUser("Developer");
         e.stopImmediatePropagation();
         e.preventDefault();
         return;
+      }
+      const t = editor.getTargetAtClientPoint(e.clientX, e.clientY);
+      if (t && t.position) {
+        editor.setPosition(t.position);
+        scheduleUiUpdate();
       }
     }, true);
 
