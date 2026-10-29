@@ -103,7 +103,6 @@ export class Gesture extends Disposable {
         }
         if (this.dispatched) {
             e.preventDefault();
-            e.stopPropagation();
             this.dispatched = false;
         }
     }
@@ -160,7 +159,6 @@ export class Gesture extends Disposable {
         }
         if (this.dispatched) {
             e.preventDefault();
-            e.stopPropagation();
             this.dispatched = false;
         }
     }
@@ -274,7 +272,6 @@ export class Gesture extends Disposable {
         }
         if (this.dispatched) {
             e.preventDefault();
-            e.stopPropagation();
             this.dispatched = false;
         }
     }

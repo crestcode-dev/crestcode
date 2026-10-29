@@ -537,6 +537,16 @@ const result = greetCrestUser("Developer");
       return false;
     }
 
+    function isMarginTarget(target) {
+      if (!target || typeof target.closest !== 'function') return false;
+      return !!(
+        target.closest('.margin') ||
+        target.closest('.glyph-margin') ||
+        target.closest('.line-numbers') ||
+        target.closest('.margin-view-overlays')
+      );
+    }
+
     function dropSyntheticEvent(event) {
       const target = event.target;
       if (isScrollbarTarget(target)) return;
@@ -627,7 +637,7 @@ const result = greetCrestUser("Developer");
           if (navigator.vibrate) { try { navigator.vibrate(35); } catch(_) {} }
         }
       }, 380);
-    }, { passive: true });
+    }, true);
 
     editorNode.addEventListener('touchmove', e => {
       if (isScrollbarTarget(e.target)) {
@@ -653,7 +663,7 @@ const result = greetCrestUser("Developer");
       } else {
         clearTimeout(pressTimer);
       }
-    }, { passive: true });
+    }, true);
 
     editorNode.addEventListener('touchend', e => {
       clearTimeout(pressTimer);
@@ -686,6 +696,10 @@ const result = greetCrestUser("Developer");
         const dx = Math.abs(touch.clientX - startX);
         const dy = Math.abs(touch.clientY - startY);
         if (dx < 8 && dy < 8) {
+          if (isMarginTarget(e.target)) {
+            // Tapping on line numbers / margin: select line via Monaco, don't open IME keyboard
+            return;
+          }
           const target = editor.getTargetAtClientPoint(touch.clientX, touch.clientY);
           if (target && target.position) {
             editor.setPosition(target.position);
@@ -694,18 +708,21 @@ const result = greetCrestUser("Developer");
           enableImeForTyping();
         }
       }
-    }, { passive: false });
+    }, true);
 
     editorNode.addEventListener('touchcancel', () => {
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
       isUserTouchDragging = false;
       touchHasMoved = false;
-    }, { passive: true });
+    }, true);
 
     editorNode.addEventListener('click', e => {
       const target = e.target;
       if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) {
+        return;
+      }
+      if (isMarginTarget(target)) {
         return;
       }
       if (Date.now() < suppressMouseUntil || isLongPressConfirmed || isScrolling || (Date.now() - lastScrollTime) < 300) {
