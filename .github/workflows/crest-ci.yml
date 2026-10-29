@@ -3,9 +3,13 @@ name: Android CI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository
@@ -15,29 +19,41 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
-
-      - name: Check Build Environment
-        run: |
-          java -version
-          gradle --version
+          distribution: temurin
+          cache: gradle
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: editor-core/package-lock.json
 
       - name: Build Editor Core
+        working-directory: editor-core
         run: |
-          cd editor-core
-          npm install
+          npm ci
           npm run build
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug
+        run: ./gradlew --build-cache :app:assembleDebug
+
+      - name: Generate Build Number
+        id: build
+        run: |
+          echo "number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "attempt=${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename Debug APK
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk \
+             app/build/outputs/apk/debug/crestcode-debug-${{ steps.build.outputs.number }}-${{ steps.build.outputs.attempt }}.apk
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: crestcode-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: crestcode-debug-${{ steps.build.outputs.number }}-${{ steps.build.outputs.attempt }}
+          path: app/build/outputs/apk/debug/crestcode-debug-${{ steps.build.outputs.number }}-${{ steps.build.outputs.attempt }}.apk
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
