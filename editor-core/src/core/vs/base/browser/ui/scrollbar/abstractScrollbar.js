@@ -122,7 +122,10 @@ export class AbstractScrollbar extends Widget {
         if (e.target !== this.domNode.domNode) {
             return;
         }
-        this._onPointerDown(e);
+        // Disabled: do not jump/auto-scroll on empty track click.
+        // Scrolling only occurs when dragging the slider handle directly.
+        e.preventDefault();
+        return;
     }
     delegatePointerDown(e) {
         const domTop = this.domNode.domNode.getClientRects()[0].top;
@@ -137,8 +140,8 @@ export class AbstractScrollbar extends Widget {
             }
         }
         else {
-            // Act as if it was a pointer down on the scrollbar
-            this._onPointerDown(e);
+            // Disabled auto-scroll jump on empty track click
+            e.preventDefault();
         }
     }
     _onPointerDown(e) {

@@ -67,7 +67,7 @@ export class GlobalPointerMoveMonitor {
             eventSource = dom.getWindow(initialElement);
         }
         this._hooks.add(dom.addDisposableListener(eventSource, dom.EventType.POINTER_MOVE, (e) => {
-            if (e.buttons !== initialButtons) {
+            if (e.pointerType !== 'touch' && e.buttons !== initialButtons) {
                 // Buttons state has changed in the meantime
                 this.stopMonitoring(true);
                 return;

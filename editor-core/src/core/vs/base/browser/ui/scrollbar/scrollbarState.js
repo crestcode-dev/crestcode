@@ -71,8 +71,9 @@ export class ScrollbarState {
                 computedSliderPosition: 0,
             };
         }
-        // We must artificially increase the size of the slider if needed, since the slider would be too small to grab with the mouse otherwise
-        const computedSliderSize = Math.round(Math.max(MINIMUM_SLIDER_SIZE, Math.floor(visibleSize * computedRepresentableSize / scrollSize)));
+        // Fixed touch handle size: prevents auto-resizing when content size changes
+        const FIXED_SLIDER_SIZE = 55;
+        const computedSliderSize = Math.round(Math.min(computedRepresentableSize, FIXED_SLIDER_SIZE));
         // The slider can move from 0 to `computedRepresentableSize` - `computedSliderSize`
         // in the same way `scrollPosition` can move from 0 to `scrollSize` - `visibleSize`.
         const computedSliderRatio = (computedRepresentableSize - computedSliderSize) / (scrollSize - visibleSize);

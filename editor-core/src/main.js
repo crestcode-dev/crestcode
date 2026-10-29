@@ -516,7 +516,12 @@ const result = greetCrestUser("Developer");
 
     function dropSyntheticEvent(event) {
       const target = event.target;
-      if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) return;
+      if (target && target.closest && (
+        target.closest('.selection-handle') ||
+        target.closest('#floating-toolbar') ||
+        target.closest('.scrollbar') ||
+        target.closest('.slider')
+      )) return;
       if (isScrolling || (Date.now() - lastScrollTime) < 300 || Date.now() < suppressMouseUntil || isLongPressConfirmed) {
         if (isScrolling) disableImeForScroll();
         event.preventDefault();
