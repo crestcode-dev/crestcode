@@ -394,6 +394,11 @@ fun CrestEditorScreen(
             }
 
             setOnTouchListener { v, event ->
+                if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                    if (!v.hasFocus()) {
+                        v.requestFocus()
+                    }
+                }
                 v.parent?.requestDisallowInterceptTouchEvent(true)
                 false
             }

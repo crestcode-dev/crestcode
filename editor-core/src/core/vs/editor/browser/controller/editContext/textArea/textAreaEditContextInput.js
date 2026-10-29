@@ -432,6 +432,9 @@ let TextAreaInput = class TextAreaInput extends Disposable {
         // Setting this._hasFocus and writing the screen reader content
         // will result in a focus() and setSelectionRange() in the textarea
         this._setHasFocus(true);
+        try {
+            this._textArea.focus();
+        } catch (_) {}
         // If the editor is off DOM, focus cannot be really set, so let's double check that we have managed to set the focus
         this.refreshFocusState();
     }
@@ -528,6 +531,11 @@ export class TextAreaWrapper extends Disposable {
         else {
             return false;
         }
+    }
+    focus() {
+        try {
+            this._actual.focus();
+        } catch (_) {}
     }
     setIgnoreSelectionChangeTime(reason) {
         this._ignoreSelectionChangeTime = Date.now();

@@ -471,8 +471,9 @@ const result = greetCrestUser("Developer");
         if (el._imeGuarded) return;
         el._imeGuarded = true;
         const origFocus = el.focus.bind(el);
+        el._origFocus = origFocus;
         el.focus = function(opts) {
-          if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+          if (isScrolling) {
             return;
           }
           return origFocus(opts);
@@ -512,8 +513,17 @@ const result = greetCrestUser("Developer");
       });
       const mainInput = editorNode.querySelector('textarea.inputarea, .native-edit-context, textarea');
       if (mainInput) {
-        mainInput.focus();
+        if (typeof mainInput._origFocus === 'function') {
+          mainInput._origFocus();
+        } else {
+          mainInput.focus();
+        }
       }
+      try {
+        if (editor && typeof editor.focus === 'function') {
+          editor.focus();
+        }
+      } catch (_) {}
       try {
         if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.showKeyboard === 'function') {
           window.CrestAndroidBridge.showKeyboard();
@@ -604,18 +614,9 @@ const result = greetCrestUser("Developer");
       isUserTouchDragging = false;
       touchHasMoved = false;
 
-      // Temporarily guard inputs against native Android IME on touchstart:
-      // If this touch becomes a drag/scroll, inputs stay readOnly.
-      // If it becomes a clean tap, touchend will call enableImeForTyping().
-      getInputElements().forEach(el => {
-        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-          el.readOnly = true;
-          el.setAttribute('inputmode', 'none');
-        }
-        if (document.activeElement === el) {
-          el.blur();
-        }
-      });
+      // On touchstart, we record initial coords. We do NOT blur or make readOnly here
+      // so Chromium allows soft keyboard on tap. If the touch becomes a scroll (dx/dy > 8),
+      // touchmove will trigger disableImeForScroll().
 
       pressTimer = setTimeout(() => {
         if (!isScrolling) {

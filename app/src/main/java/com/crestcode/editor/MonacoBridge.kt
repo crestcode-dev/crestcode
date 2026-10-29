@@ -24,6 +24,7 @@ class MonacoBridge(
         webView?.post {
             webView?.requestFocus()
             val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.showSoftInput(webView, 0)
             imm?.toggleSoftInput(android.view.inputmethod.InputMethodManager.SHOW_FORCED, 0)
         }
     }

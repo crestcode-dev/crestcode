@@ -101,10 +101,7 @@ export class Gesture extends Disposable {
             evt.clientY = touch.clientY;
             this.dispatchEvent(evt);
         }
-        if (this.dispatched) {
-            e.preventDefault();
-            this.dispatched = false;
-        }
+        this.dispatched = false;
     }
     onTouchEnd(targetWindow, e) {
         const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
@@ -157,10 +154,7 @@ export class Gesture extends Disposable {
             // forget about this touch
             delete this.activeTouches[touch.identifier];
         }
-        if (this.dispatched) {
-            e.preventDefault();
-            this.dispatched = false;
-        }
+        this.dispatched = false;
     }
     newGestureEvent(type, initialTarget) {
         const event = document.createEvent('CustomEvent');
