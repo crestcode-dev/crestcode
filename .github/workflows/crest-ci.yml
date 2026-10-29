@@ -30,7 +30,7 @@ jobs:
       - name: Build Editor Core
         working-directory: editor-core
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Build Debug APK
