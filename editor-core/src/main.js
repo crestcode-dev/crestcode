@@ -561,14 +561,11 @@ const result = greetCrestUser("Developer");
     });
 
     editorNode.addEventListener('-monaco-gesturetap', function(event) {
-      if (isScrolling || (Date.now() - lastScrollTime) < 300) {
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        event.preventDefault();
-        return false;
-      }
+      isScrolling = false;
+      clearTimeout(scrollResetTimer);
+      lastScrollTime = 0;
       enableImeForTyping();
-    }, true);
+    });
 
     document.addEventListener('selectionchange', event => {
       if (Date.now() < suppressMouseUntil || isLongPressConfirmed) event.stopImmediatePropagation();

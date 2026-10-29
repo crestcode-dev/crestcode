@@ -80,7 +80,6 @@ export class Gesture extends Disposable {
         if (this.handle) {
             this.handle.dispose();
             this.handle = null;
-            this.stoppedInertia = true;
         }
         for (let i = 0, len = e.targetTouches.length; i < len; i++) {
             const touch = e.targetTouches.item(i);
@@ -116,17 +115,17 @@ export class Gesture extends Disposable {
                 continue;
             }
             const data = this.activeTouches[touch.identifier], holdTime = Date.now() - data.initialTimeStamp;
-            if (!this.stoppedInertia && !data.hasMoved && holdTime < Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - touch.pageX) < 15
-                && Math.abs(data.initialPageY - touch.pageY) < 15) {
+            if (!data.hasMoved && holdTime < Gesture.HOLD_DELAY
+                && Math.abs(data.initialPageX - touch.pageX) < 20
+                && Math.abs(data.initialPageY - touch.pageY) < 20) {
                 const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
                 this.dispatchEvent(evt);
             }
-            else if (!this.stoppedInertia && !data.hasMoved && holdTime >= Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - touch.pageX) < 15
-                && Math.abs(data.initialPageY - touch.pageY) < 15) {
+            else if (!data.hasMoved && holdTime >= Gesture.HOLD_DELAY
+                && Math.abs(data.initialPageX - touch.pageX) < 20
+                && Math.abs(data.initialPageY - touch.pageY) < 20) {
                 const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
@@ -152,9 +151,6 @@ export class Gesture extends Disposable {
             this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
             // forget about this touch
             delete this.activeTouches[touch.identifier];
-        }
-        if (Object.keys(this.activeTouches).length === 0) {
-            this.stoppedInertia = false;
         }
         if (this.dispatched) {
             e.preventDefault();
@@ -235,6 +231,8 @@ export class Gesture extends Disposable {
             dispatchTo.forEach(d => d.dispatchEvent(evt));
             if (!stopped) {
                 this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y);
+            } else {
+                this.handle = null;
             }
         });
     }
