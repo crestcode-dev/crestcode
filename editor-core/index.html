@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>CrestCode Mobile Editor</title>
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <div id="app">
+    <main id="editor-container">
+      <div id="floating-toolbar">
+        <button id="floating-copy" type="button">Copy</button>
+        <button id="floating-paste" type="button">Paste</button>
+      </div>
+      <button id="start-handle" class="selection-handle" aria-label="Selection start"></button>
+      <button id="end-handle" class="selection-handle" aria-label="Selection end"></button>
+    </main>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

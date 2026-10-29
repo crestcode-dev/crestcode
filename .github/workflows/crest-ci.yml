@@ -22,6 +22,17 @@ jobs:
           java -version
           gradle --version
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Editor Core
+        run: |
+          cd editor-core
+          npm install
+          npm run build
+
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 

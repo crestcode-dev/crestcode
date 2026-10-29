@@ -18,3 +18,7 @@ acode/
 *.jks
 .agents
 skills-lock.json
+node_modules/
+node_modules
+editor-core/node_modules
+editor-core/node_modules/
