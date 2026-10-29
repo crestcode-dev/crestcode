@@ -514,13 +514,25 @@ const result = greetCrestUser("Developer");
       });
     }
 
+    function isScrollbarTarget(target) {
+      if (!target) return false;
+      if (target === window || target === document || target === document.body) return true;
+      if (typeof target.closest === 'function') {
+        return !!(
+          target.closest('.scrollbar') ||
+          target.closest('.slider') ||
+          target.closest('.editor-scrollable')
+        );
+      }
+      return false;
+    }
+
     function dropSyntheticEvent(event) {
       const target = event.target;
+      if (isScrollbarTarget(target)) return;
       if (target && target.closest && (
         target.closest('.selection-handle') ||
-        target.closest('#floating-toolbar') ||
-        target.closest('.scrollbar') ||
-        target.closest('.slider')
+        target.closest('#floating-toolbar')
       )) return;
       if (isScrolling || (Date.now() - lastScrollTime) < 300 || Date.now() < suppressMouseUntil || isLongPressConfirmed) {
         if (isScrolling) disableImeForScroll();
@@ -574,6 +586,10 @@ const result = greetCrestUser("Developer");
     }
 
     editorNode.addEventListener('touchstart', e => {
+      if (isScrollbarTarget(e.target)) {
+        clearTimeout(pressTimer);
+        return;
+      }
       if (e.touches.length !== 1) { clearTimeout(pressTimer); return; }
       const touch = e.touches[0];
       startX = touch.clientX;
@@ -603,6 +619,10 @@ const result = greetCrestUser("Developer");
     }, { passive: true });
 
     editorNode.addEventListener('touchmove', e => {
+      if (isScrollbarTarget(e.target)) {
+        clearTimeout(pressTimer);
+        return;
+      }
       if (isLongPressConfirmed) return;
       if (e.touches && e.touches.length > 0) {
         const touch = e.touches[0];
@@ -625,6 +645,9 @@ const result = greetCrestUser("Developer");
 
     editorNode.addEventListener('touchend', e => {
       clearTimeout(pressTimer);
+      if (isScrollbarTarget(e.target)) {
+        return;
+      }
       isUserTouchDragging = false;
       if (isLongPressConfirmed) {
         e.preventDefault();

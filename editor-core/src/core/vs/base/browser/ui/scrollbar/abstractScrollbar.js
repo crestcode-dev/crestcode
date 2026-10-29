@@ -174,6 +174,8 @@ export class AbstractScrollbar extends Widget {
         if (!e.target || !(e.target instanceof Element)) {
             return;
         }
+        e.preventDefault();
+        e.stopPropagation();
         const initialPointerPosition = this._sliderPointerPosition(e);
         const initialPointerOrthogonalPosition = this._sliderOrthogonalPointerPosition(e);
         const initialScrollbarState = this._scrollbarState.clone();
