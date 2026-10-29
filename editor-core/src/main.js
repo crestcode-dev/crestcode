@@ -1,4 +1,5 @@
 import * as monaco from './core/vs/editor/editor.main.js';
+import './languages/definitions/register.all.ts';
 import './styles.css';
 
 (function() {
