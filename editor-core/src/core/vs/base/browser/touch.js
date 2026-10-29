@@ -115,19 +115,19 @@ export class Gesture extends Disposable {
             }
             const data = this.activeTouches[touch.identifier], holdTime = Date.now() - data.initialTimeStamp;
             if (holdTime < Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - data.rollingPageX.at(-1)) < 30
-                && Math.abs(data.initialPageY - data.rollingPageY.at(-1)) < 30) {
+                && Math.abs(data.initialPageX - touch.pageX) < 30
+                && Math.abs(data.initialPageY - touch.pageY) < 30) {
                 const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
-                evt.pageX = data.rollingPageX.at(-1);
-                evt.pageY = data.rollingPageY.at(-1);
+                evt.pageX = touch.pageX;
+                evt.pageY = touch.pageY;
                 this.dispatchEvent(evt);
             }
             else if (holdTime >= Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - data.rollingPageX.at(-1)) < 30
-                && Math.abs(data.initialPageY - data.rollingPageY.at(-1)) < 30) {
+                && Math.abs(data.initialPageX - touch.pageX) < 30
+                && Math.abs(data.initialPageY - touch.pageY) < 30) {
                 const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
-                evt.pageX = data.rollingPageX.at(-1);
-                evt.pageY = data.rollingPageY.at(-1);
+                evt.pageX = touch.pageX;
+                evt.pageY = touch.pageY;
                 this.dispatchEvent(evt);
             }
             else if (activeTouchCount === 1) {
