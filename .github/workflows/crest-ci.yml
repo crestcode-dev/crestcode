@@ -38,9 +38,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build Debug APK
-        run: ./gradlew --build-cache :app:assembleDebug
-
       - name: Decode Release Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -65,7 +62,7 @@ jobs:
           test -n "$RELEASE_KEY_PASSWORD"
           ./gradlew --build-cache :app:assembleRelease
 
-      - name: Verify Release APK Signature
+      - name: Verify APK Signature
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
@@ -75,30 +72,11 @@ jobs:
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose "$APK"
 
-      - name: Rename APKs
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-          BUILD_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          mv app/build/outputs/apk/debug/app-debug.apk \
-            "app/build/outputs/apk/debug/crestcode-debug-${BUILD_NUMBER}-${BUILD_ATTEMPT}.apk"
-          mv app/build/outputs/apk/release/app-release.apk \
-            "app/build/outputs/apk/release/crestcode-release-${BUILD_NUMBER}-${BUILD_ATTEMPT}.apk"
-
-      - name: Upload Debug APK
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: crestcode-debug-${{ github.run_number }}-${{ github.run_attempt }}
-          path: app/build/outputs/apk/debug/crestcode-debug-${{ github.run_number }}-${{ github.run_attempt }}.apk
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload Signed Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: crestcode-release-${{ github.run_number }}-${{ github.run_attempt }}
-          path: app/build/outputs/apk/release/crestcode-release-${{ github.run_number }}-${{ github.run_attempt }}.apk
+          name: crestcode-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
           compression-level: 0
           if-no-files-found: error
           retention-days: 30

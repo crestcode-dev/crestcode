@@ -526,7 +526,7 @@ const result = greetCrestUser("Developer");
       }
     }
 
-    ['mousedown', 'mouseup', 'click'].forEach(evt => {
+    ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach(evt => {
       window.addEventListener(evt, dropSyntheticEvent, true);
       document.addEventListener(evt, dropSyntheticEvent, true);
       editorNode.addEventListener(evt, dropSyntheticEvent, true);
@@ -576,6 +576,16 @@ const result = greetCrestUser("Developer");
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
       isUserTouchDragging = false;
+
+      // Temporarily guard inputs against native Android IME on touchstart:
+      // If this touch becomes a drag/scroll, inputs stay readOnly.
+      // If it becomes a clean tap, touchend will call enableImeForTyping().
+      getInputElements().forEach(el => {
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+          el.readOnly = true;
+          el.setAttribute('inputmode', 'none');
+        }
+      });
 
       pressTimer = setTimeout(() => {
         if (!isScrolling) {

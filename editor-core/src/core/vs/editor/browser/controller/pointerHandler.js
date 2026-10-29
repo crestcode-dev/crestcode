@@ -37,10 +37,25 @@ export class PointerEventHandler extends MouseHandler {
         }));
         // PonterEvents
         const pointerEvents = new EditorPointerEventFactory(this.viewHelper.viewDomNode);
-        this._register(pointerEvents.onPointerMove(this.viewHelper.viewDomNode, (e) => this._onMouseMove(e)));
-        this._register(pointerEvents.onPointerUp(this.viewHelper.viewDomNode, (e) => this._onMouseUp(e)));
+        this._register(pointerEvents.onPointerMove(this.viewHelper.viewDomNode, (e) => {
+            if (e.browserEvent && (e.browserEvent.pointerType === 'touch' || this._lastPointerType === 'touch')) {
+                return;
+            }
+            this._onMouseMove(e);
+        }));
+        this._register(pointerEvents.onPointerUp(this.viewHelper.viewDomNode, (e) => {
+            if (e.browserEvent && (e.browserEvent.pointerType === 'touch' || this._lastPointerType === 'touch')) {
+                return;
+            }
+            this._onMouseUp(e);
+        }));
         this._register(pointerEvents.onPointerLeave(this.viewHelper.viewDomNode, (e) => this._onMouseLeave(e)));
-        this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
+        this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => {
+            if (e.browserEvent && (e.browserEvent.pointerType === 'touch' || this._lastPointerType === 'touch')) {
+                return;
+            }
+            this._onMouseDown(e, pointerId);
+        }));
     }
     onTap(event) {
         if (!event.initialTarget || !this.viewHelper.linesContentDomNode.contains(event.initialTarget)) {

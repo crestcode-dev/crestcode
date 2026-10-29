@@ -393,9 +393,6 @@ fun CrestEditorScreen(
             }
 
             setOnTouchListener { v, event ->
-                if (!v.hasFocus()) {
-                    v.requestFocus()
-                }
                 v.parent?.requestDisallowInterceptTouchEvent(true)
                 false
             }
