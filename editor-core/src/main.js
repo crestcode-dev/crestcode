@@ -494,20 +494,31 @@ const result = greetCrestUser("Developer");
           el.blur();
         }
       });
+      try {
+        if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.hideKeyboard === 'function') {
+          window.CrestAndroidBridge.hideKeyboard();
+        }
+      } catch (_) {}
     }
 
     function enableImeForTyping() {
-      if (isScrolling || (Date.now() - lastScrollTime) < 300) return;
+      if (isScrolling) return;
       getInputElements().forEach(el => {
         if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
           el.readOnly = false;
+          el.removeAttribute('readonly');
           el.setAttribute('inputmode', 'text');
         }
       });
       const mainInput = editorNode.querySelector('textarea.inputarea, .native-edit-context, textarea');
-      if (mainInput && document.activeElement !== mainInput) {
+      if (mainInput) {
         mainInput.focus();
       }
+      try {
+        if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.showKeyboard === 'function') {
+          window.CrestAndroidBridge.showKeyboard();
+        }
+      } catch (_) {}
     }
 
     function setupInputAreaFocusGuard() {
@@ -516,7 +527,7 @@ const result = greetCrestUser("Developer");
         el._imeGuarded = true;
         const origFocus = el.focus.bind(el);
         el.focus = function(opts) {
-          if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+          if (isScrolling) {
             return;
           }
           return origFocus(opts);
@@ -546,29 +557,6 @@ const result = greetCrestUser("Developer");
         target.closest('.margin-view-overlays')
       );
     }
-
-    function dropSyntheticEvent(event) {
-      const target = event.target;
-      if (isScrollbarTarget(target)) return;
-      if (target && target.closest && (
-        target.closest('.selection-handle') ||
-        target.closest('#floating-toolbar')
-      )) return;
-      if (isScrolling || (Date.now() - lastScrollTime) < 300 || Date.now() < suppressMouseUntil || isLongPressConfirmed) {
-        if (isScrolling) disableImeForScroll();
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        return false;
-      }
-    }
-
-    ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach(evt => {
-      window.addEventListener(evt, dropSyntheticEvent, true);
-      document.addEventListener(evt, dropSyntheticEvent, true);
-      editorNode.addEventListener(evt, dropSyntheticEvent, true);
-      container.addEventListener(evt, dropSyntheticEvent, true);
-    });
 
     editorNode.addEventListener('-monaco-gesturetap', function(event) {
       isScrolling = false;
@@ -683,7 +671,7 @@ const result = greetCrestUser("Developer");
         e.stopPropagation();
         return;
       }
-      if (touchHasMoved || isScrolling || (Date.now() - lastScrollTime) < 300) {
+      if (touchHasMoved || isScrolling) {
         lastScrollTime = Date.now();
         disableImeForScroll();
         clearTimeout(scrollResetTimer);

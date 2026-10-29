@@ -296,6 +296,7 @@ class MainActivity : ComponentActivity() {
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
                                         webView = wv
+                                        monacoBridge.setWebView(wv)
                                         if (activeTabId.isNotEmpty()) {
                                             viewModel.openFile(File(activeTabId), wv)
                                         }

@@ -13,6 +13,30 @@ class MonacoBridge(
     private var onSaveRequestedCallback: ((content: String) -> Unit)? = null
 ) {
     private val TAG = "MonacoBridge"
+    private var webView: WebView? = null
+
+    fun setWebView(wv: WebView?) {
+        this.webView = wv
+    }
+
+    @JavascriptInterface
+    fun showKeyboard() {
+        webView?.post {
+            webView?.requestFocus()
+            val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.toggleSoftInput(android.view.inputmethod.InputMethodManager.SHOW_FORCED, 0)
+        }
+    }
+
+    @JavascriptInterface
+    fun hideKeyboard() {
+        webView?.post {
+            val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            webView?.let { wv ->
+                imm?.hideSoftInputFromWindow(wv.windowToken, 0)
+            }
+        }
+    }
 
     fun setCallbacks(
         onReady: (() -> Unit)? = null,
