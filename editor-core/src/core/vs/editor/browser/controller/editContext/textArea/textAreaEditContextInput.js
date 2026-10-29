@@ -595,7 +595,8 @@ export class TextAreaWrapper extends Disposable {
         try {
             const scrollState = dom.saveParentsScrollTop(textArea);
             this.setIgnoreSelectionChangeTime('setSelectionRange');
-            textArea.focus();
+            // Do NOT call textArea.focus() when not focused. On Android/mobile, calling focus()
+            // here forcefully steals focus and opens the soft keyboard during scrolling and line rendering!
             textArea.setSelectionRange(selectionStart, selectionEnd);
             dom.restoreParentsScrollTop(textArea, scrollState);
         }

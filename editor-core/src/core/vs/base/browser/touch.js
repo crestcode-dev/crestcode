@@ -80,6 +80,7 @@ export class Gesture extends Disposable {
         if (this.handle) {
             this.handle.dispose();
             this.handle = null;
+            this.stoppedInertia = true;
         }
         for (let i = 0, len = e.targetTouches.length; i < len; i++) {
             const touch = e.targetTouches.item(i);
@@ -89,6 +90,7 @@ export class Gesture extends Disposable {
                 initialTimeStamp: timestamp,
                 initialPageX: touch.pageX,
                 initialPageY: touch.pageY,
+                hasMoved: false,
                 rollingTimestamps: [timestamp],
                 rollingPageX: [touch.pageX],
                 rollingPageY: [touch.pageY]
@@ -114,17 +116,17 @@ export class Gesture extends Disposable {
                 continue;
             }
             const data = this.activeTouches[touch.identifier], holdTime = Date.now() - data.initialTimeStamp;
-            if (holdTime < Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - touch.pageX) < 30
-                && Math.abs(data.initialPageY - touch.pageY) < 30) {
+            if (!this.stoppedInertia && !data.hasMoved && holdTime < Gesture.HOLD_DELAY
+                && Math.abs(data.initialPageX - touch.pageX) < 15
+                && Math.abs(data.initialPageY - touch.pageY) < 15) {
                 const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
                 this.dispatchEvent(evt);
             }
-            else if (holdTime >= Gesture.HOLD_DELAY
-                && Math.abs(data.initialPageX - touch.pageX) < 30
-                && Math.abs(data.initialPageY - touch.pageY) < 30) {
+            else if (!this.stoppedInertia && !data.hasMoved && holdTime >= Gesture.HOLD_DELAY
+                && Math.abs(data.initialPageX - touch.pageX) < 15
+                && Math.abs(data.initialPageY - touch.pageY) < 15) {
                 const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
                 evt.pageX = touch.pageX;
                 evt.pageY = touch.pageY;
@@ -150,6 +152,9 @@ export class Gesture extends Disposable {
             this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
             // forget about this touch
             delete this.activeTouches[touch.identifier];
+        }
+        if (Object.keys(this.activeTouches).length === 0) {
+            this.stoppedInertia = false;
         }
         if (this.dispatched) {
             e.preventDefault();
@@ -242,6 +247,9 @@ export class Gesture extends Disposable {
                 continue;
             }
             const data = this.activeTouches[touch.identifier];
+            if (Math.abs(touch.pageX - data.initialPageX) > 10 || Math.abs(touch.pageY - data.initialPageY) > 10) {
+                data.hasMoved = true;
+            }
             const evt = this.newGestureEvent(EventType.Change, data.initialTarget);
             evt.translationX = touch.pageX - data.rollingPageX.at(-1);
             evt.translationY = touch.pageY - data.rollingPageY.at(-1);

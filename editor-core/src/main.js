@@ -463,9 +463,22 @@ const result = greetCrestUser("Developer");
     let lastScrollTime = 0;
     let isUserTouchDragging = false;
     let lastUserTouchDragTime = 0;
+    let touchHasMoved = false;
 
     function getInputElements() {
-      return editorNode.querySelectorAll('textarea, input, [contenteditable], .native-edit-context, .inputarea, .ime-text-area');
+      const els = editorNode.querySelectorAll('textarea, input, [contenteditable], .native-edit-context, .inputarea, .ime-text-area');
+      els.forEach(el => {
+        if (el._imeGuarded) return;
+        el._imeGuarded = true;
+        const origFocus = el.focus.bind(el);
+        el.focus = function(opts) {
+          if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+            return;
+          }
+          return origFocus(opts);
+        };
+      });
+      return els;
     }
 
     function disableImeForScroll(isInit = false) {
@@ -492,10 +505,7 @@ const result = greetCrestUser("Developer");
         }
       });
       const mainInput = editorNode.querySelector('textarea.inputarea, .native-edit-context, textarea');
-      if (mainInput) {
-        if (document.activeElement === mainInput) {
-          mainInput.blur();
-        }
+      if (mainInput && document.activeElement !== mainInput) {
         mainInput.focus();
       }
     }
@@ -597,6 +607,7 @@ const result = greetCrestUser("Developer");
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
       isUserTouchDragging = false;
+      touchHasMoved = false;
 
       // Temporarily guard inputs against native Android IME on touchstart:
       // If this touch becomes a drag/scroll, inputs stay readOnly.
@@ -629,6 +640,7 @@ const result = greetCrestUser("Developer");
         const dx = Math.abs(touch.clientX - startX);
         const dy = Math.abs(touch.clientY - startY);
         if (dx > 8 || dy > 8 || e.touches.length > 1) {
+          touchHasMoved = true;
           clearTimeout(pressTimer);
           isUserTouchDragging = true;
           lastUserTouchDragTime = Date.now();
@@ -661,7 +673,7 @@ const result = greetCrestUser("Developer");
         e.stopPropagation();
         return;
       }
-      if (isScrolling) {
+      if (touchHasMoved || isScrolling || (Date.now() - lastScrollTime) < 300) {
         lastScrollTime = Date.now();
         disableImeForScroll();
         clearTimeout(scrollResetTimer);
@@ -673,7 +685,7 @@ const result = greetCrestUser("Developer");
       if (touch) {
         const dx = Math.abs(touch.clientX - startX);
         const dy = Math.abs(touch.clientY - startY);
-        if (dx < 8 && dy < 8 && (Date.now() - lastScrollTime) >= 300) {
+        if (dx < 8 && dy < 8) {
           enableImeForTyping();
         }
       }
@@ -683,6 +695,7 @@ const result = greetCrestUser("Developer");
       clearTimeout(pressTimer);
       isLongPressConfirmed = false;
       isUserTouchDragging = false;
+      touchHasMoved = false;
     }, { passive: true });
 
     editorNode.addEventListener('click', e => {
@@ -690,20 +703,13 @@ const result = greetCrestUser("Developer");
       if (target && target.closest && (target.closest('.selection-handle') || target.closest('#floating-toolbar'))) {
         return;
       }
-      if (Date.now() < suppressMouseUntil || isLongPressConfirmed) {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        return;
-      }
-      if (isScrolling || (Date.now() - lastScrollTime) < 300) {
+      if (Date.now() < suppressMouseUntil || isLongPressConfirmed || isScrolling || (Date.now() - lastScrollTime) < 300) {
         disableImeForScroll();
         e.stopPropagation();
         e.stopImmediatePropagation();
         e.preventDefault();
         return;
       }
-      enableImeForTyping();
     }, true);
 
     function beginHandleDrag(isStart, event) {
@@ -806,8 +812,7 @@ const result = greetCrestUser("Developer");
     editor.onDidChangeCursorSelection(scheduleUiUpdate);
     editor.onDidScrollChange((e) => {
       scheduleUiUpdate();
-      const isTouchScroll = isUserTouchDragging || (Date.now() - lastUserTouchDragTime < 400);
-      if (isTouchScroll && (!e || e.scrollTopChanged || e.scrollLeftChanged)) {
+      if (!e || e.scrollTopChanged || e.scrollLeftChanged) {
         isScrolling = true;
         lastScrollTime = Date.now();
         disableImeForScroll();
