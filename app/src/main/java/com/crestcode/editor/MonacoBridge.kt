@@ -70,7 +70,9 @@ class MonacoBridge(
     @JavascriptInterface
     fun onEditorReady(infoJson: String) {
         Log.i(TAG, "Monaco Editor READY: $infoJson")
-        onReadyCallback?.invoke()
+        webView?.post {
+            onReadyCallback?.invoke()
+        }
     }
 
     @JavascriptInterface

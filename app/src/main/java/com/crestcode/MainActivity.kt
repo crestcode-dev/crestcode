@@ -75,6 +75,17 @@ class MainActivity : ComponentActivity() {
                 val monacoBridge = remember {
                     MonacoBridge(
                         context = context.applicationContext,
+                        onReadyCallback = {
+                            val activePath = viewModel.activeTabId.value
+                            if (activePath.isNotEmpty()) {
+                                viewModel.openFile(File(activePath), webView)
+                            } else {
+                                val openTabs = viewModel.openTabs.value
+                                if (openTabs.isNotEmpty()) {
+                                    viewModel.openFile(File(openTabs.first().id), webView)
+                                }
+                            }
+                        },
                         onContentChangedCallback = { _ ->
                             viewModel.markActiveTabModified(true)
                         },

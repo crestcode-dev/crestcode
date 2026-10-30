@@ -52,17 +52,7 @@ import './styles.css';
   const footerStatusText = document.getElementById('footer-status-text');
   const btnTheme = document.getElementById('btn-theme');
 
-  const sampleCode = `// Crest Code - Custom In-Tree Monaco Engine
-// Direct Source Level Control Active
-
-function greetCrestUser(name) {
-    const greeting = "Hello, " + name + "! Monaco Editor is running directly from CrestCode source.";
-    console.log(greeting);
-    return greeting;
-}
-
-const result = greetCrestUser("Developer");
-`;
+  const sampleCode = '';
 
   try {
     const container = document.getElementById('editor-container');
@@ -828,7 +818,8 @@ const result = greetCrestUser("Developer");
     editor.onDidChangeCursorSelection(scheduleUiUpdate);
     editor.onDidScrollChange((e) => {
       scheduleUiUpdate();
-      if (!e || e.scrollTopChanged || e.scrollLeftChanged) {
+      const isTouchScroll = isUserTouchDragging || (Date.now() - lastUserTouchDragTime < 350);
+      if (isTouchScroll && (!e || e.scrollTopChanged || e.scrollLeftChanged)) {
         isScrolling = true;
         lastScrollTime = Date.now();
         disableImeForScroll();
