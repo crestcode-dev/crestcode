@@ -22,7 +22,8 @@ fun CrestTopBar(
     onRunClick: () -> Unit = {},
     onUndoClick: () -> Unit = {},
     onRedoClick: () -> Unit = {},
-    onSearchClick: () -> Unit = {}
+    onSearchClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -92,10 +93,10 @@ fun CrestTopBar(
             )
         }
 
-        IconButton(onClick = {}) {
+        IconButton(onClick = onSettingsClick) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Options",
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings",
                 tint = CrestTextPrimary
             )
         }

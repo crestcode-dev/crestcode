@@ -32,6 +32,7 @@ fun CrestFileDrawer(
     onNewFileClick: () -> Unit = {},
     onNewFolderClick: () -> Unit = {},
     onTerminalClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     onCloseDrawer: () -> Unit = {}
 ) {
     Column(
@@ -152,7 +153,7 @@ fun CrestFileDrawer(
                 Text("Git", color = CrestTextPrimary, fontSize = 12.sp)
             }
 
-            IconButton(onClick = {}) {
+            IconButton(onClick = onSettingsClick) {
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Settings",

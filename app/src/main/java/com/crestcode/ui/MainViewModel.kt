@@ -31,6 +31,9 @@ class MainViewModel : ViewModel() {
     private val _showTerminal = MutableStateFlow(false)
     val showTerminal: StateFlow<Boolean> = _showTerminal.asStateFlow()
 
+    private val _showSettings = MutableStateFlow(false)
+    val showSettings: StateFlow<Boolean> = _showSettings.asStateFlow()
+
     // Dialog states
     private val _showCreateDialog = MutableStateFlow(false)
     val showCreateDialog: StateFlow<Boolean> = _showCreateDialog.asStateFlow()
@@ -150,6 +153,10 @@ class MainViewModel : ViewModel() {
 
     fun setShowTerminal(show: Boolean) {
         _showTerminal.value = show
+    }
+
+    fun setShowSettings(show: Boolean) {
+        _showSettings.value = show
     }
 
     fun openCreateDialog(isFolder: Boolean) {

@@ -162,5 +162,15 @@ class MonacoBridge(
                         JSONObject.quote(text) + "); }", null
             )
         }
+
+        fun applySettings(webView: WebView?, settingsJson: JSONObject) {
+            webView?.let { wv ->
+                wv.post {
+                    val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.applySettings) { " +
+                            "window.CrestEditorAPI.applySettings(" + settingsJson.toString() + "); }"
+                    wv.evaluateJavascript(jsCode, null)
+                }
+            }
+        }
     }
 }

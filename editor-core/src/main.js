@@ -78,8 +78,66 @@ import './styles.css';
 
     setupMobileTouchSelection(editor, container);
 
+    // Settings & VS Code-style AutoSave Engine
+    const currentSettings = {
+      'files.autoSave': 'afterDelay',
+      'files.autoSaveDelay': 1000,
+      'editor.fontSize': 14,
+      'editor.tabSize': 4,
+      'editor.wordWrap': 'on',
+      'editor.minimap.enabled': false,
+      'editor.cursorBlinking': 'smooth',
+      'editor.theme': 'vs-dark',
+      'editor.lineNumbers': 'on'
+    };
+
+    let autoSaveTimer = null;
+    let isContentDirty = false;
+
+    function triggerAutoSave(reason) {
+      if (!isContentDirty || !editor) return;
+      const model = editor.getModel();
+      if (!model || model.uri.path === '/empty') return;
+
+      if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onSaveRequested === 'function') {
+        console.log('[AutoSave] Running auto-save with reason:', reason);
+        window.CrestAndroidBridge.onSaveRequested(editor.getValue());
+        isContentDirty = false;
+      }
+    }
+
+    function scheduleAutoSave() {
+      const mode = currentSettings['files.autoSave'] || 'afterDelay';
+      if (mode !== 'afterDelay') return;
+
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      const delay = parseInt(currentSettings['files.autoSaveDelay'], 10) || 1000;
+      autoSaveTimer = setTimeout(function() {
+        triggerAutoSave('AUTO');
+      }, delay);
+    }
+
+    // App/Window focus changes (Android onPause / window blur)
+    window.addEventListener('blur', function() {
+      const mode = currentSettings['files.autoSave'];
+      if (mode === 'onWindowChange' || mode === 'onFocusChange') {
+        triggerAutoSave('WINDOW_CHANGE');
+      }
+    });
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') {
+        const mode = currentSettings['files.autoSave'];
+        if (mode === 'onWindowChange' || mode === 'onFocusChange') {
+          triggerAutoSave('WINDOW_CHANGE');
+        }
+      }
+    });
+
     // Add Ctrl+S / Cmd+S save command shortcut
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+      isContentDirty = false;
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
       if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onSaveRequested === 'function') {
         window.CrestAndroidBridge.onSaveRequested(editor.getValue());
       }
@@ -98,6 +156,8 @@ import './styles.css';
     updateStats();
 
     editor.onDidChangeModelContent(function() {
+      isContentDirty = true;
+      scheduleAutoSave();
       updateStats();
       if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onContentChanged === 'function') {
         try {
@@ -201,6 +261,8 @@ import './styles.css';
     },
     openFile: function(filePath, content, languageId) {
       if (!editor) return false;
+      isContentDirty = false;
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
       const uri = monaco.Uri.file(filePath);
       let model = monaco.editor.getModel(uri);
       if (!model) {
@@ -214,6 +276,26 @@ import './styles.css';
       editor.setModel(model);
       updateStats();
       return true;
+    },
+    applySettings: function(settings) {
+      if (!settings) return;
+      Object.assign(currentSettings, settings);
+
+      if (editor) {
+        const options = {};
+        if ('editor.fontSize' in settings) options.fontSize = parseInt(settings['editor.fontSize'], 10);
+        if ('editor.tabSize' in settings) options.tabSize = parseInt(settings['editor.tabSize'], 10);
+        if ('editor.wordWrap' in settings) options.wordWrap = settings['editor.wordWrap'];
+        if ('editor.minimap.enabled' in settings) options.minimap = { enabled: Boolean(settings['editor.minimap.enabled']) };
+        if ('editor.cursorBlinking' in settings) options.cursorBlinking = settings['editor.cursorBlinking'];
+        if ('editor.lineNumbers' in settings) options.lineNumbers = settings['editor.lineNumbers'];
+        editor.updateOptions(options);
+
+        if ('editor.theme' in settings) {
+          monaco.editor.setTheme(settings['editor.theme']);
+        }
+      }
+      console.log('[Crest Monaco] Applied settings successfully:', settings);
     },
     getEditorStats: function() {
       if (!editor) return null;

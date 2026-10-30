@@ -32,6 +32,7 @@ import com.crestcode.runtime.AlpineManager
 import com.crestcode.runtime.TerminalSessionManager
 import com.crestcode.ui.MainViewModel
 import com.crestcode.ui.TerminalScreen
+import com.crestcode.ui.SettingsScreen
 import com.crestcode.ui.components.*
 import com.crestcode.ui.theme.*
 import com.crestcode.workspace.WorkspaceManager
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 val activeTabId by viewModel.activeTabId.collectAsState()
                 val activeLanguage by viewModel.activeLanguage.collectAsState()
                 val showTerminal by viewModel.showTerminal.collectAsState()
+                val showSettings by viewModel.showSettings.collectAsState()
 
                 var isCtrlActive by remember { mutableStateOf(false) }
                 var isAltActive by remember { mutableStateOf(false) }
@@ -76,6 +78,7 @@ class MainActivity : ComponentActivity() {
                     MonacoBridge(
                         context = context.applicationContext,
                         onReadyCallback = {
+                            MonacoBridge.applySettings(webView, settingsManager.getSettingsJsonObject())
                             val activePath = viewModel.activeTabId.value
                             if (activePath.isNotEmpty()) {
                                 viewModel.openFile(File(activePath), webView)
@@ -102,6 +105,16 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     viewModel.loadWorkspace(context, webView)
+                }
+
+                DisposableEffect(settingsManager, webView) {
+                    val listener: (String, Any) -> Unit = { _, _ ->
+                        MonacoBridge.applySettings(webView, settingsManager.getSettingsJsonObject())
+                    }
+                    settingsManager.addChangeListener(listener)
+                    onDispose {
+                        settingsManager.removeChangeListener(listener)
+                    }
                 }
 
                 LaunchedEffect(toastMessage) {
@@ -198,6 +211,12 @@ class MainActivity : ComponentActivity() {
                                         viewModel.setShowTerminal(true)
                                     }
                                 },
+                                onSettingsClick = {
+                                    scope.launch {
+                                        drawerState.close()
+                                        viewModel.setShowSettings(true)
+                                    }
+                                },
                                 onCloseDrawer = {
                                     scope.launch { drawerState.close() }
                                 }
@@ -223,6 +242,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onRedoClick = {
                                         MonacoBridge.redo(webView)
+                                    },
+                                    onSettingsClick = {
+                                        viewModel.setShowSettings(true)
                                     }
                                 )
                                 CrestTabBar(
@@ -303,6 +325,14 @@ class MainActivity : ComponentActivity() {
                                     initialPath = workspaceDir.absolutePath,
                                     modifier = Modifier.fillMaxSize()
                                 )
+                            } else if (showSettings) {
+                                SettingsScreen(
+                                    settingsManager = settingsManager,
+                                    onClose = {
+                                        viewModel.setShowSettings(false)
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             } else {
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
@@ -316,7 +346,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            if (!showTerminal && openTabs.isEmpty()) {
+                            if (!showTerminal && !showSettings && openTabs.isEmpty()) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
