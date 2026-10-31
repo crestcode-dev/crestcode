@@ -101,12 +101,14 @@ class MonacoBridge(
     companion object {
         fun openFile(webView: WebView?, path: String, content: String, languageId: String) {
             webView?.let { wv ->
-                val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.openFile) { " +
-                        "window.CrestEditorAPI.openFile(" +
-                        JSONObject.quote(path) + ", " +
-                        JSONObject.quote(content) + ", " +
-                        JSONObject.quote(languageId) + "); }"
-                wv.evaluateJavascript(jsCode, null)
+                wv.post {
+                    val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.openFile) { " +
+                            "window.CrestEditorAPI.openFile(" +
+                            JSONObject.quote(path) + ", " +
+                            JSONObject.quote(content) + ", " +
+                            JSONObject.quote(languageId) + "); }"
+                    wv.evaluateJavascript(jsCode, null)
+                }
             }
         }
 

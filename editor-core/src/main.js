@@ -45,6 +45,61 @@ import './styles.css';
 
   let editor = null;
   let isReady = false;
+  let autoSaveTimer = null;
+  let isContentDirty = false;
+
+  // Settings & VS Code-style AutoSave Engine
+  const currentSettings = {
+    'files.autoSave': 'afterDelay',
+    'files.autoSaveDelay': 1000,
+    'editor.fontSize': 14,
+    'editor.tabSize': 4,
+    'editor.wordWrap': 'on',
+    'editor.minimap.enabled': false,
+    'editor.cursorBlinking': 'smooth',
+    'editor.theme': 'vs-dark',
+    'editor.lineNumbers': 'on'
+  };
+
+  function triggerAutoSave(reason) {
+    if (!isContentDirty || !editor) return;
+    const model = editor.getModel();
+    if (!model || model.uri.path === '/empty') return;
+
+    if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onSaveRequested === 'function') {
+      console.log('[AutoSave] Running auto-save with reason:', reason);
+      window.CrestAndroidBridge.onSaveRequested(editor.getValue());
+      isContentDirty = false;
+    }
+  }
+
+  function scheduleAutoSave() {
+    const mode = currentSettings['files.autoSave'] || 'afterDelay';
+    if (mode !== 'afterDelay') return;
+
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    const delay = parseInt(currentSettings['files.autoSaveDelay'], 10) || 1000;
+    autoSaveTimer = setTimeout(function() {
+      triggerAutoSave('AUTO');
+    }, delay);
+  }
+
+  // App/Window focus changes (Android onPause / window blur)
+  window.addEventListener('blur', function() {
+    const mode = currentSettings['files.autoSave'];
+    if (mode === 'onWindowChange' || mode === 'onFocusChange') {
+      triggerAutoSave('WINDOW_CHANGE');
+    }
+  });
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      const mode = currentSettings['files.autoSave'];
+      if (mode === 'onWindowChange' || mode === 'onFocusChange') {
+        triggerAutoSave('WINDOW_CHANGE');
+      }
+    }
+  });
 
   const statusPill = document.getElementById('status-pill');
   const statLines = document.getElementById('stat-lines');
@@ -77,62 +132,6 @@ import './styles.css';
     isReady = true;
 
     setupMobileTouchSelection(editor, container);
-
-    // Settings & VS Code-style AutoSave Engine
-    const currentSettings = {
-      'files.autoSave': 'afterDelay',
-      'files.autoSaveDelay': 1000,
-      'editor.fontSize': 14,
-      'editor.tabSize': 4,
-      'editor.wordWrap': 'on',
-      'editor.minimap.enabled': false,
-      'editor.cursorBlinking': 'smooth',
-      'editor.theme': 'vs-dark',
-      'editor.lineNumbers': 'on'
-    };
-
-    let autoSaveTimer = null;
-    let isContentDirty = false;
-
-    function triggerAutoSave(reason) {
-      if (!isContentDirty || !editor) return;
-      const model = editor.getModel();
-      if (!model || model.uri.path === '/empty') return;
-
-      if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onSaveRequested === 'function') {
-        console.log('[AutoSave] Running auto-save with reason:', reason);
-        window.CrestAndroidBridge.onSaveRequested(editor.getValue());
-        isContentDirty = false;
-      }
-    }
-
-    function scheduleAutoSave() {
-      const mode = currentSettings['files.autoSave'] || 'afterDelay';
-      if (mode !== 'afterDelay') return;
-
-      if (autoSaveTimer) clearTimeout(autoSaveTimer);
-      const delay = parseInt(currentSettings['files.autoSaveDelay'], 10) || 1000;
-      autoSaveTimer = setTimeout(function() {
-        triggerAutoSave('AUTO');
-      }, delay);
-    }
-
-    // App/Window focus changes (Android onPause / window blur)
-    window.addEventListener('blur', function() {
-      const mode = currentSettings['files.autoSave'];
-      if (mode === 'onWindowChange' || mode === 'onFocusChange') {
-        triggerAutoSave('WINDOW_CHANGE');
-      }
-    });
-
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'hidden') {
-        const mode = currentSettings['files.autoSave'];
-        if (mode === 'onWindowChange' || mode === 'onFocusChange') {
-          triggerAutoSave('WINDOW_CHANGE');
-        }
-      }
-    });
 
     // Add Ctrl+S / Cmd+S save command shortcut
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
@@ -263,19 +262,26 @@ import './styles.css';
       if (!editor) return false;
       isContentDirty = false;
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
-      const uri = monaco.Uri.file(filePath);
-      let model = monaco.editor.getModel(uri);
-      if (!model) {
-        model = monaco.editor.createModel(content, languageId, uri);
-      } else {
-        if (model.getValue() !== content) {
-          model.setValue(content);
+      try {
+        const uri = monaco.Uri.file(filePath);
+        let model = monaco.editor.getModel(uri);
+        if (!model) {
+          model = monaco.editor.createModel(content, languageId, uri);
+        } else {
+          if (model.getValue() !== content) {
+            model.setValue(content);
+          }
+          monaco.editor.setModelLanguage(model, languageId);
         }
-        monaco.editor.setModelLanguage(model, languageId);
+        editor.setModel(model);
+        isContentDirty = false;
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        updateStats();
+        return true;
+      } catch (err) {
+        console.error('[Crest Monaco] openFile error:', err);
+        return false;
       }
-      editor.setModel(model);
-      updateStats();
-      return true;
     },
     applySettings: function(settings) {
       if (!settings) return;
