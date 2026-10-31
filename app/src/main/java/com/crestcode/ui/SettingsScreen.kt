@@ -65,6 +65,7 @@ private val VSCodeLinkFg = Color(0xFF3794FF)               // textLink.foregroun
  * 100% faithful to VS Code Desktop Preferences Editor on mobile / narrow screens:
  * - Search bar directly at the top with filter widget (@modified) and clear action
  * - NO horizontal TOC tabs (matches VS Code's narrow-width display: none for TOC)
+ * - In-place anchored SelectBox DropdownMenu for Enum settings (NO center alert dialogs!)
  * - Settings grouped by Category Section Headers directly in the list
  * - Exact 3dp left blue vertical modified indicator bar (is-configured)
  * - Square VS Code checkboxes, flat select boxes, and border-highlighted inputs
@@ -91,14 +92,6 @@ fun SettingsScreen(
     var showTopMenu by remember { mutableStateOf(false) }
     var showSearchFilterMenu by remember { mutableStateOf(false) }
     var showResetAllConfirm by remember { mutableStateOf(false) }
-
-    // Dropdown / Enum picker modal state
-    var activeEnumPicker by remember { mutableStateOf<SettingDefinition?>(null) }
-
-    // Count modified settings
-    val modifiedCount = remember(settingsState) {
-        SettingsManager.SCHEMA.count { settingsManager.isModified(it.key) }
-    }
 
     if (isJsonMode) {
         // VS Code settings.json Editor View
@@ -402,84 +395,12 @@ fun SettingsScreen(
                             },
                             onReset = {
                                 settingsManager.reset(def.key)
-                            },
-                            onOpenEnumPicker = {
-                                activeEnumPicker = def
                             }
                         )
                     }
                 }
             }
         }
-    }
-
-    // -------------------------------------------------------------------------
-    // Enum Dropdown Modal (VS Code styled)
-    // -------------------------------------------------------------------------
-    if (activeEnumPicker != null) {
-        val target = activeEnumPicker!!
-        val currentVal = settingsState[target.key]?.toString() ?: target.defaultValue.toString()
-
-        AlertDialog(
-            onDismissRequest = { activeEnumPicker = null },
-            title = {
-                Text(
-                    text = target.title,
-                    color = VSCodeHeaderForeground,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                )
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = target.key,
-                        color = VSCodeBadgeFg,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    target.options.forEach { opt ->
-                        val isChosen = opt == currentVal
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isChosen) VSCodeFocusBorder.copy(alpha = 0.15f) else Color.Transparent)
-                                .clickable {
-                                    settingsManager.set(target.key, opt)
-                                    activeEnumPicker = null
-                                }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = opt,
-                                color = if (isChosen) VSCodeFocusBorder else VSCodeForeground,
-                                fontWeight = if (isChosen) FontWeight.SemiBold else FontWeight.Normal,
-                                fontSize = 13.5.sp
-                            )
-                            if (isChosen) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = VSCodeFocusBorder,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { activeEnumPicker = null }) {
-                    Text("Cancel", color = VSCodeDescription, fontSize = 13.sp)
-                }
-            },
-            containerColor = VSCodeHeaderBg,
-            shape = RoundedCornerShape(3.dp)
-        )
     }
 
     // -------------------------------------------------------------------------
@@ -527,8 +448,7 @@ private fun VSCodeSettingRow(
     currentValue: Any,
     isModified: Boolean,
     onValueChange: (Any) -> Unit,
-    onReset: () -> Unit,
-    onOpenEnumPicker: () -> Unit
+    onReset: () -> Unit
 ) {
     val context = LocalContext.current
     var showActionMenu by remember { mutableStateOf(false) }
@@ -705,32 +625,86 @@ private fun VSCodeSettingRow(
                     }
 
                     SettingType.ENUM -> {
-                        // VS Code SelectBox Dropdown
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(32.dp)
-                                .background(VSCodeInputBg, RoundedCornerShape(2.dp))
-                                .border(1.dp, VSCodeInputBorder, RoundedCornerShape(2.dp))
-                                .clickable { onOpenEnumPicker() }
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = currentValue.toString(),
-                                color = VSCodeForeground,
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        // VS Code In-Place Anchored SelectBox Dropdown (Exact VS Code desktop behavior!)
+                        var isDropdownExpanded by remember { mutableStateOf(false) }
 
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Dropdown",
-                                tint = VSCodeDescription,
-                                modifier = Modifier.size(18.dp)
-                            )
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(32.dp)
+                                    .background(VSCodeInputBg, RoundedCornerShape(2.dp))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isDropdownExpanded) VSCodeFocusBorder else VSCodeInputBorder,
+                                        shape = RoundedCornerShape(2.dp)
+                                    )
+                                    .clickable { isDropdownExpanded = !isDropdownExpanded }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = currentValue.toString(),
+                                    color = VSCodeForeground,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Dropdown",
+                                    tint = if (isDropdownExpanded) VSCodeFocusBorder else VSCodeDescription,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = isDropdownExpanded,
+                                onDismissRequest = { isDropdownExpanded = false },
+                                modifier = Modifier
+                                    .background(VSCodeInputBg)
+                                    .border(1.dp, VSCodeInputBorder, RoundedCornerShape(2.dp))
+                                    .heightIn(max = 240.dp)
+                            ) {
+                                definition.options.forEach { opt ->
+                                    val isSelected = opt == currentValue.toString()
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = opt,
+                                                    color = if (isSelected) VSCodeFocusBorder else VSCodeForeground,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    fontSize = 13.sp
+                                                )
+                                                if (isSelected) {
+                                                    Spacer(modifier = Modifier.width(16.dp))
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = VSCodeFocusBorder,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            onValueChange(opt)
+                                            isDropdownExpanded = false
+                                        },
+                                        modifier = Modifier.background(
+                                            if (isSelected) VSCodeFocusBorder.copy(alpha = 0.12f) else Color.Transparent
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
