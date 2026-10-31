@@ -135,7 +135,6 @@ class MainViewModel : ViewModel() {
                 _openTabs.value = _openTabs.value.map { tab ->
                     if (tab.id == filePath) tab.copy(isModified = false) else tab
                 }
-                _toastMessage.value = "Saved ${targetFile.name}"
             }.onFailure { ex ->
                 _toastMessage.value = "Save failed: ${ex.localizedMessage}"
             }
