@@ -297,7 +297,7 @@ class SettingsManager(private val context: Context) {
         persistJson(map)
         SCHEMA.forEach { def ->
             changeListeners.forEach { listener ->
-                try { listener(def.key, def.defaultValue) } catch (_) {}
+                try { listener(def.key, def.defaultValue) } catch (_: Throwable) {}
             }
         }
     }
@@ -339,7 +339,7 @@ class SettingsManager(private val context: Context) {
             // Notify all
             newMap.forEach { (k, v) ->
                 changeListeners.forEach { listener ->
-                    try { listener(k, v) } catch (_) {}
+                    try { listener(k, v) } catch (_: Throwable) {}
                 }
             }
 
